@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,13 @@ package org.springframework.boot.actuate.neo4j;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.neo4j.driver.Driver;
+import org.neo4j.driver.Record;
 import org.neo4j.driver.exceptions.SessionExpiredException;
-import org.neo4j.driver.reactive.RxResult;
-import org.neo4j.driver.reactive.RxSession;
+import org.neo4j.driver.reactivestreams.ReactiveResult;
+import org.neo4j.driver.reactivestreams.ReactiveSession;
 import org.neo4j.driver.summary.ResultSummary;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.util.function.Tuple2;
 import reactor.util.retry.Retry;
 
 import org.springframework.boot.actuate.health.AbstractReactiveHealthIndicator;
@@ -37,6 +38,7 @@ import org.springframework.boot.actuate.health.ReactiveHealthIndicator;
  *
  * @author Michael J. Simons
  * @author Stephane Nicoll
+ * @author Phillip Webb
  * @since 2.4.0
  */
 public final class Neo4jReactiveHealthIndicator extends AbstractReactiveHealthIndicator {
@@ -55,22 +57,49 @@ public final class Neo4jReactiveHealthIndicator extends AbstractReactiveHealthIn
 	@Override
 	protected Mono<Health> doHealthCheck(Health.Builder builder) {
 		return runHealthCheckQuery()
-				.doOnError(SessionExpiredException.class,
-						(e) -> logger.warn(Neo4jHealthIndicator.MESSAGE_SESSION_EXPIRED))
-				.retryWhen(Retry.max(1).filter(SessionExpiredException.class::isInstance)).map((result) -> {
-					this.healthDetailsHandler.addHealthDetails(builder, result.getT1(), result.getT2());
-					return builder.build();
-				});
+			.doOnError(SessionExpiredException.class, (ex) -> logger.warn(Neo4jHealthIndicator.MESSAGE_SESSION_EXPIRED))
+			.retryWhen(Retry.max(1).filter(SessionExpiredException.class::isInstance))
+			.map((healthDetails) -> {
+				this.healthDetailsHandler.addHealthDetails(builder, healthDetails);
+				return builder.build();
+			});
 	}
 
-	Mono<Tuple2<String, ResultSummary>> runHealthCheckQuery() {
-		// We use WRITE here to make sure UP is returned for a server that supports
-		// all possible workloads
-		return Mono.using(() -> this.driver.rxSession(Neo4jHealthIndicator.DEFAULT_SESSION_CONFIG), (session) -> {
-			RxResult result = session.run(Neo4jHealthIndicator.CYPHER);
-			return Mono.from(result.records()).map((record) -> record.get("edition").asString())
-					.zipWhen((edition) -> Mono.from(result.consume()));
-		}, RxSession::close);
+	Mono<Neo4jHealthDetails> runHealthCheckQuery() {
+		return Mono.using(this::session, this::healthDetails, ReactiveSession::close);
+	}
+
+	private ReactiveSession session() {
+		return this.driver.session(ReactiveSession.class, Neo4jHealthIndicator.DEFAULT_SESSION_CONFIG);
+	}
+
+	private Mono<Neo4jHealthDetails> healthDetails(ReactiveSession session) {
+		return Mono.from(session.run(Neo4jHealthIndicator.CYPHER)).flatMap(this::healthDetails);
+	}
+
+	private Mono<? extends Neo4jHealthDetails> healthDetails(ReactiveResult result) {
+		Flux<Record> records = Flux.from(result.records());
+		Mono<ResultSummary> summary = Mono.from(result.consume());
+		Neo4jHealthDetailsBuilder builder = new Neo4jHealthDetailsBuilder();
+		return records.single().doOnNext(builder::record).then(summary).map(builder::build);
+	}
+
+	/**
+	 * Builder used to create a {@link Neo4jHealthDetails} from a {@link Record} and a
+	 * {@link ResultSummary}.
+	 */
+	private static class Neo4jHealthDetailsBuilder {
+
+		private Record record;
+
+		void record(Record record) {
+			this.record = record;
+		}
+
+		private Neo4jHealthDetails build(ResultSummary summary) {
+			return new Neo4jHealthDetails(this.record, summary);
+		}
+
 	}
 
 }

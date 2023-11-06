@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,54 +16,114 @@
 
 package org.springframework.boot;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-
 import org.apache.commons.logging.Log;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
+import org.springframework.boot.SpringApplication.Startup;
 import org.springframework.boot.system.ApplicationPid;
-import org.springframework.util.StopWatch;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.assertArg;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 /**
  * Tests for {@link StartupInfoLogger}.
  *
  * @author Dave Syer
  * @author Andy Wilkinson
+ * @author Moritz Halbritter
  */
 class StartupInfoLoggerTests {
 
 	private final Log log = mock(Log.class);
 
 	@Test
-	void startingFormat() throws UnknownHostException {
+	void startingFormat() {
 		given(this.log.isInfoEnabled()).willReturn(true);
 		new StartupInfoLogger(getClass()).logStarting(this.log);
-		ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-		verify(this.log).info(captor.capture());
-		assertThat(captor.getValue().toString()).contains("Starting " + getClass().getSimpleName() + " using Java "
-				+ System.getProperty("java.version") + " on " + InetAddress.getLocalHost().getHostName() + " with PID "
-				+ new ApplicationPid() + " (started by " + System.getProperty("user.name") + " in "
-				+ System.getProperty("user.dir") + ")");
+		then(this.log).should()
+			.info(assertArg((message) -> assertThat(message.toString())
+				.contains("Starting " + getClass().getSimpleName() + " using Java " + System.getProperty("java.version")
+						+ " with PID " + new ApplicationPid() + " (started by " + System.getProperty("user.name")
+						+ " in " + System.getProperty("user.dir") + ")")));
+	}
+
+	@Test
+	void startingFormatInAotMode() {
+		System.setProperty("spring.aot.enabled", "true");
+		try {
+			given(this.log.isInfoEnabled()).willReturn(true);
+			new StartupInfoLogger(getClass()).logStarting(this.log);
+			then(this.log).should()
+				.info(assertArg((message) -> assertThat(message.toString())
+					.contains("Starting AOT-processed " + getClass().getSimpleName() + " using Java "
+							+ System.getProperty("java.version") + " with PID " + new ApplicationPid() + " (started by "
+							+ System.getProperty("user.name") + " in " + System.getProperty("user.dir") + ")")));
+
+		}
+		finally {
+			System.clearProperty("spring.aot.enabled");
+		}
 	}
 
 	@Test
 	void startedFormat() {
-		StopWatch stopWatch = new StopWatch();
-		stopWatch.start();
 		given(this.log.isInfoEnabled()).willReturn(true);
-		stopWatch.stop();
-		new StartupInfoLogger(getClass()).logStarted(this.log, stopWatch);
-		ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-		verify(this.log).info(captor.capture());
-		assertThat(captor.getValue().toString()).matches("Started " + getClass().getSimpleName()
-				+ " in \\d+\\.\\d{1,3} seconds \\(JVM running for \\d+\\.\\d{1,3}\\)");
+		new StartupInfoLogger(getClass()).logStarted(this.log, new TestStartup(1345L, "Started"));
+		then(this.log).should()
+			.info(assertArg((message) -> assertThat(message.toString()).matches("Started " + getClass().getSimpleName()
+					+ " in \\d+\\.\\d{1,3} seconds \\(process running for 1.345\\)")));
+	}
+
+	@Test
+	void startedWithoutUptimeFormat() {
+		given(this.log.isInfoEnabled()).willReturn(true);
+		new StartupInfoLogger(getClass()).logStarted(this.log, new TestStartup(null, "Started"));
+		then(this.log).should()
+			.info(assertArg((message) -> assertThat(message.toString())
+				.matches("Started " + getClass().getSimpleName() + " in \\d+\\.\\d{1,3} seconds")));
+	}
+
+	@Test
+	void restoredFormat() {
+		given(this.log.isInfoEnabled()).willReturn(true);
+		new StartupInfoLogger(getClass()).logStarted(this.log, new TestStartup(null, "Restored"));
+		then(this.log).should()
+			.info(assertArg((message) -> assertThat(message.toString())
+				.matches("Restored " + getClass().getSimpleName() + " in \\d+\\.\\d{1,3} seconds")));
+	}
+
+	static class TestStartup extends Startup {
+
+		private final long startTime = System.currentTimeMillis();
+
+		private final Long uptime;
+
+		private final String action;
+
+		TestStartup(Long uptime, String action) {
+			this.uptime = uptime;
+			this.action = action;
+			started();
+		}
+
+		@Override
+		long startTime() {
+			return this.startTime;
+		}
+
+		@Override
+		Long processUptime() {
+			return this.uptime;
+		}
+
+		@Override
+		String action() {
+			return this.action;
+		}
+
 	}
 
 }

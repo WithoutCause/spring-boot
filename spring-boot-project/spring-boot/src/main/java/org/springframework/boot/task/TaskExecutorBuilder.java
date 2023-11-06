@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,11 @@ import org.springframework.util.CollectionUtils;
  * @author Stephane Nicoll
  * @author Filip Hrisafov
  * @since 2.1.0
+ * @deprecated since 3.2.0 for removal in 3.4.0 in favor of
+ * {@link ThreadPoolTaskExecutorBuilder}
  */
+@Deprecated(since = "3.2.0", forRemoval = true)
+@SuppressWarnings("removal")
 public class TaskExecutorBuilder {
 
 	private final Integer queueCapacity;
@@ -137,8 +141,8 @@ public class TaskExecutorBuilder {
 	}
 
 	/**
-	 * Set whether core threads are allow to time out. When enabled, this enables dynamic
-	 * growing and shrinking of the pool.
+	 * Set whether core threads are allowed to time out. When enabled, this enables
+	 * dynamic growing and shrinking of the pool.
 	 * @param allowCoreThreadTimeOut if core threads are allowed to time out
 	 * @return a new builder instance
 	 */
@@ -276,7 +280,7 @@ public class TaskExecutorBuilder {
 	 * @see #configure(ThreadPoolTaskExecutor)
 	 */
 	public ThreadPoolTaskExecutor build() {
-		return build(ThreadPoolTaskExecutor.class);
+		return configure(new ThreadPoolTaskExecutor());
 	}
 
 	/**

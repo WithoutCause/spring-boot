@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,12 @@
 
 package org.springframework.boot.actuate.autoconfigure.metrics.export.stackdriver;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
+
+import org.springframework.boot.actuate.autoconfigure.metrics.export.properties.AbstractPropertiesConfigAdapterTests;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,7 +30,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author Johannes Graf
  */
-class StackdriverPropertiesConfigAdapterTests {
+class StackdriverPropertiesConfigAdapterTests
+		extends AbstractPropertiesConfigAdapterTests<StackdriverProperties, StackdriverPropertiesConfigAdapter> {
+
+	StackdriverPropertiesConfigAdapterTests() {
+		super(StackdriverPropertiesConfigAdapter.class);
+	}
 
 	@Test
 	void whenPropertiesProjectIdIsSetAdapterProjectIdReturnsIt() {
@@ -39,6 +49,38 @@ class StackdriverPropertiesConfigAdapterTests {
 		StackdriverProperties properties = new StackdriverProperties();
 		properties.setResourceType("my-resource-type");
 		assertThat(new StackdriverPropertiesConfigAdapter(properties).resourceType()).isEqualTo("my-resource-type");
+	}
+
+	@Test
+	void whenPropertiesResourceLabelsAreSetAdapterResourceLabelsReturnsThem() {
+		final Map<String, String> labels = new HashMap<>();
+		labels.put("labelOne", "valueOne");
+		labels.put("labelTwo", "valueTwo");
+		StackdriverProperties properties = new StackdriverProperties();
+		properties.setResourceLabels(labels);
+		assertThat(new StackdriverPropertiesConfigAdapter(properties).resourceLabels())
+			.containsExactlyInAnyOrderEntriesOf(labels);
+	}
+
+	@Test
+	void whenPropertiesUseSemanticMetricTypesIsSetAdapterUseSemanticMetricTypesReturnsIt() {
+		StackdriverProperties properties = new StackdriverProperties();
+		properties.setUseSemanticMetricTypes(true);
+		assertThat(new StackdriverPropertiesConfigAdapter(properties).useSemanticMetricTypes()).isTrue();
+	}
+
+	@Test
+	void whenPropertiesMetricTypePrefixIsSetAdapterMetricTypePrefixReturnsIt() {
+		StackdriverProperties properties = new StackdriverProperties();
+		properties.setMetricTypePrefix("external.googleapis.com/prometheus");
+		assertThat(new StackdriverPropertiesConfigAdapter(properties).metricTypePrefix())
+			.isEqualTo("external.googleapis.com/prometheus");
+	}
+
+	@Test
+	@Override
+	protected void adapterOverridesAllConfigMethods() {
+		adapterOverridesAllConfigMethodsExcept("credentials");
 	}
 
 }

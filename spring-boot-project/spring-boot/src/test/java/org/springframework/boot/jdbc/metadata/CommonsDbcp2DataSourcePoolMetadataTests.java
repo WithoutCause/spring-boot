@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.boot.jdbc.metadata;
+
+import java.time.Duration;
 
 import org.apache.commons.dbcp2.BasicDataSource;
 import org.junit.jupiter.api.Test;
@@ -69,7 +71,7 @@ class CommonsDbcp2DataSourcePoolMetadataTests
 		BasicDataSource dataSource = createDataSource();
 		dataSource.setValidationQuery("SELECT FROM FOO");
 		assertThat(new CommonsDbcp2DataSourcePoolMetadata(dataSource).getValidationQuery())
-				.isEqualTo("SELECT FROM FOO");
+			.isEqualTo("SELECT FROM FOO");
 	}
 
 	@Override
@@ -83,7 +85,7 @@ class CommonsDbcp2DataSourcePoolMetadataTests
 		BasicDataSource dataSource = createDataSource();
 		dataSource.setMinIdle(minSize);
 		dataSource.setMaxTotal(maxSize);
-		dataSource.setMinEvictableIdleTimeMillis(5000);
+		dataSource.setMinEvictableIdle(Duration.ofSeconds(5));
 		return new CommonsDbcp2DataSourcePoolMetadata(dataSource);
 	}
 

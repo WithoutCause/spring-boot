@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 
 import org.springframework.util.Assert;
@@ -34,7 +35,7 @@ import org.springframework.util.StreamUtils;
 import org.springframework.util.StringUtils;
 
 /**
- * {@link Layers} implementation backed by a {@code BOOT-INF/layers.idx} file.
+ * {@link Layers} implementation backed by a {@code layers.idx} file.
  *
  * @author Phillip Webb
  * @author Madhura Bhave
@@ -44,8 +45,10 @@ class IndexedLayers implements Layers {
 	private final Map<String, List<String>> layers = new LinkedHashMap<>();
 
 	IndexedLayers(String indexFile) {
-		String[] lines = Arrays.stream(indexFile.split("\n")).map((line) -> line.replace("\r", ""))
-				.filter(StringUtils::hasText).toArray(String[]::new);
+		String[] lines = Arrays.stream(indexFile.split("\n"))
+			.map((line) -> line.replace("\r", ""))
+			.filter(StringUtils::hasText)
+			.toArray(String[]::new);
 		List<String> contents = null;
 		for (String line : lines) {
 			if (line.startsWith("- ")) {
@@ -91,8 +94,10 @@ class IndexedLayers implements Layers {
 	 */
 	static IndexedLayers get(Context context) {
 		try {
-			try (JarFile jarFile = new JarFile(context.getJarFile())) {
-				ZipEntry entry = jarFile.getEntry("BOOT-INF/layers.idx");
+			try (JarFile jarFile = new JarFile(context.getArchiveFile())) {
+				Manifest manifest = jarFile.getManifest();
+				String location = manifest.getMainAttributes().getValue("Spring-Boot-Layers-Index");
+				ZipEntry entry = (location != null) ? jarFile.getEntry(location) : null;
 				if (entry != null) {
 					String indexFile = StreamUtils.copyToString(jarFile.getInputStream(entry), StandardCharsets.UTF_8);
 					return new IndexedLayers(indexFile);

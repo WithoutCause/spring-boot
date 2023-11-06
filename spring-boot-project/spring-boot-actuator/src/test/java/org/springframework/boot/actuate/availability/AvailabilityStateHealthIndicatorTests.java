@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 package org.springframework.boot.actuate.availability;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import org.springframework.boot.actuate.health.Status;
 import org.springframework.boot.availability.ApplicationAvailability;
@@ -35,43 +35,42 @@ import static org.mockito.BDDMockito.given;
  *
  * @author Phillip Webb
  */
+@ExtendWith(MockitoExtension.class)
 class AvailabilityStateHealthIndicatorTests {
 
 	@Mock
 	private ApplicationAvailability applicationAvailability;
 
-	@BeforeEach
-	void setup() {
-		MockitoAnnotations.initMocks(this);
-	}
-
 	@Test
 	void createWhenApplicationAvailabilityIsNullThrowsException() {
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> new AvailabilityStateHealthIndicator(null, LivenessState.class, (statusMappings) -> {
-				})).withMessage("ApplicationAvailability must not be null");
+			.isThrownBy(() -> new AvailabilityStateHealthIndicator(null, LivenessState.class, (statusMappings) -> {
+			}))
+			.withMessage("ApplicationAvailability must not be null");
 	}
 
 	@Test
 	void createWhenStateTypeIsNullThrowsException() {
 		assertThatIllegalArgumentException().isThrownBy(
 				() -> new AvailabilityStateHealthIndicator(this.applicationAvailability, null, (statusMappings) -> {
-				})).withMessage("StateType must not be null");
+				}))
+			.withMessage("StateType must not be null");
 	}
 
 	@Test
 	void createWhenStatusMappingIsNullThrowsException() {
-		assertThatIllegalArgumentException().isThrownBy(
-				() -> new AvailabilityStateHealthIndicator(this.applicationAvailability, LivenessState.class, null))
-				.withMessage("StatusMappings must not be null");
+		assertThatIllegalArgumentException()
+			.isThrownBy(
+					() -> new AvailabilityStateHealthIndicator(this.applicationAvailability, LivenessState.class, null))
+			.withMessage("StatusMappings must not be null");
 	}
 
 	@Test
 	void createWhenStatusMappingDoesNotCoverAllEnumsThrowsException() {
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> new AvailabilityStateHealthIndicator(this.applicationAvailability,
-						LivenessState.class, (statusMappings) -> statusMappings.add(LivenessState.CORRECT, Status.UP)))
-				.withMessage("StatusMappings does not include BROKEN");
+			.isThrownBy(() -> new AvailabilityStateHealthIndicator(this.applicationAvailability, LivenessState.class,
+					(statusMappings) -> statusMappings.add(LivenessState.CORRECT, Status.UP)))
+			.withMessage("StatusMappings does not include BROKEN");
 	}
 
 	@Test

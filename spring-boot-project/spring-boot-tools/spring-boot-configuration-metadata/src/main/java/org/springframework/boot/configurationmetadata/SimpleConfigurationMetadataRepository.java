@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,14 +54,11 @@ public class SimpleConfigurationMetadataRepository implements ConfigurationMetad
 	public void add(Collection<ConfigurationMetadataSource> sources) {
 		for (ConfigurationMetadataSource source : sources) {
 			String groupId = source.getGroupId();
-			ConfigurationMetadataGroup group = this.allGroups.get(groupId);
-			if (group == null) {
-				group = new ConfigurationMetadataGroup(groupId);
-				this.allGroups.put(groupId, group);
-			}
+			ConfigurationMetadataGroup group = this.allGroups.computeIfAbsent(groupId,
+					(key) -> new ConfigurationMetadataGroup(groupId));
 			String sourceType = source.getType();
 			if (sourceType != null) {
-				putIfAbsent(group.getSources(), sourceType, source);
+				addOrMergeSource(group.getSources(), sourceType, source);
 			}
 		}
 	}
@@ -74,9 +71,9 @@ public class SimpleConfigurationMetadataRepository implements ConfigurationMetad
 	 */
 	public void add(ConfigurationMetadataProperty property, ConfigurationMetadataSource source) {
 		if (source != null) {
-			putIfAbsent(source.getProperties(), property.getId(), property);
+			source.getProperties().putIfAbsent(property.getId(), property);
 		}
-		putIfAbsent(getGroup(source).getProperties(), property.getId(), property);
+		getGroup(source).getProperties().putIfAbsent(property.getId(), property);
 	}
 
 	/**
@@ -91,9 +88,9 @@ public class SimpleConfigurationMetadataRepository implements ConfigurationMetad
 			}
 			else {
 				// Merge properties
-				group.getProperties().forEach((name, value) -> putIfAbsent(existingGroup.getProperties(), name, value));
+				group.getProperties().forEach((name, value) -> existingGroup.getProperties().putIfAbsent(name, value));
 				// Merge sources
-				group.getSources().forEach((name, value) -> putIfAbsent(existingGroup.getSources(), name, value));
+				group.getSources().forEach((name, value) -> addOrMergeSource(existingGroup.getSources(), name, value));
 			}
 		}
 
@@ -101,19 +98,19 @@ public class SimpleConfigurationMetadataRepository implements ConfigurationMetad
 
 	private ConfigurationMetadataGroup getGroup(ConfigurationMetadataSource source) {
 		if (source == null) {
-			ConfigurationMetadataGroup rootGroup = this.allGroups.get(ROOT_GROUP);
-			if (rootGroup == null) {
-				rootGroup = new ConfigurationMetadataGroup(ROOT_GROUP);
-				this.allGroups.put(ROOT_GROUP, rootGroup);
-			}
-			return rootGroup;
+			return this.allGroups.computeIfAbsent(ROOT_GROUP, (key) -> new ConfigurationMetadataGroup(ROOT_GROUP));
 		}
 		return this.allGroups.get(source.getGroupId());
 	}
 
-	private <V> void putIfAbsent(Map<String, V> map, String key, V value) {
-		if (!map.containsKey(key)) {
-			map.put(key, value);
+	private void addOrMergeSource(Map<String, ConfigurationMetadataSource> sources, String name,
+			ConfigurationMetadataSource source) {
+		ConfigurationMetadataSource existingSource = sources.get(name);
+		if (existingSource == null) {
+			sources.put(name, source);
+		}
+		else {
+			source.getProperties().forEach((k, v) -> existingSource.getProperties().putIfAbsent(k, v));
 		}
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,13 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Common {@link Layout}s.
+ * Common {@link Layout layouts}.
  *
  * @author Phillip Webb
  * @author Dave Syer
  * @author Andy Wilkinson
  * @author Madhura Bhave
+ * @author Scott Frederick
  * @since 1.0.0
  */
 public final class Layouts {
@@ -65,17 +66,11 @@ public final class Layouts {
 
 		@Override
 		public String getLauncherClassName() {
-			return "org.springframework.boot.loader.JarLauncher";
+			return "org.springframework.boot.loader.launch.JarLauncher";
 		}
 
 		@Override
 		public String getLibraryLocation(String libraryName, LibraryScope scope) {
-			return "BOOT-INF/lib/";
-		}
-
-		@Deprecated
-		@Override
-		public String getLibraryDestination(String libraryName, LibraryScope scope) {
 			return "BOOT-INF/lib/";
 		}
 
@@ -113,7 +108,7 @@ public final class Layouts {
 
 		@Override
 		public String getLauncherClassName() {
-			return "org.springframework.boot.loader.PropertiesLauncher";
+			return "org.springframework.boot.loader.launch.PropertiesLauncher";
 		}
 
 	}
@@ -153,7 +148,7 @@ public final class Layouts {
 
 		@Override
 		public String getLauncherClassName() {
-			return "org.springframework.boot.loader.WarLauncher";
+			return "org.springframework.boot.loader.launch.WarLauncher";
 		}
 
 		@Override
@@ -161,15 +156,19 @@ public final class Layouts {
 			return SCOPE_LOCATION.get(scope);
 		}
 
-		@Deprecated
-		@Override
-		public String getLibraryDestination(String libraryName, LibraryScope scope) {
-			return SCOPE_LOCATION.get(scope);
-		}
-
 		@Override
 		public String getClassesLocation() {
 			return "WEB-INF/classes/";
+		}
+
+		@Override
+		public String getClasspathIndexFileLocation() {
+			return "WEB-INF/classpath.idx";
+		}
+
+		@Override
+		public String getLayersIndexFileLocation() {
+			return "WEB-INF/layers.idx";
 		}
 
 		@Override

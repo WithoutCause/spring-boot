@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.aop.scope.ScopedProxyUtils;
 import org.springframework.beans.BeansException;
@@ -82,7 +83,7 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 	private static final String BEAN_NAME = MockitoPostProcessor.class.getName();
 
 	private static final String CONFIGURATION_CLASS_ATTRIBUTE = Conventions
-			.getQualifiedAttributeName(ConfigurationClassPostProcessor.class, "configurationClass");
+		.getQualifiedAttributeName(ConfigurationClassPostProcessor.class, "configurationClass");
 
 	private static final BeanNameGenerator beanNameGenerator = new DefaultBeanNameGenerator();
 
@@ -94,11 +95,11 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 
 	private final MockitoBeans mockitoBeans = new MockitoBeans();
 
-	private Map<Definition, String> beanNameRegistry = new HashMap<>();
+	private final Map<Definition, String> beanNameRegistry = new HashMap<>();
 
-	private Map<Field, String> fieldRegistry = new HashMap<>();
+	private final Map<Field, String> fieldRegistry = new HashMap<>();
 
-	private Map<String, SpyDefinition> spies = new HashMap<>();
+	private final Map<String, SpyDefinition> spies = new HashMap<>();
 
 	/**
 	 * Create a new {@link MockitoPostProcessor} instance with the given initial
@@ -162,11 +163,11 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 
 	private void register(ConfigurableListableBeanFactory beanFactory, BeanDefinitionRegistry registry,
 			Definition definition, Field field) {
-		if (definition instanceof MockDefinition) {
-			registerMock(beanFactory, registry, (MockDefinition) definition, field);
+		if (definition instanceof MockDefinition mockDefinition) {
+			registerMock(beanFactory, registry, mockDefinition, field);
 		}
-		else if (definition instanceof SpyDefinition) {
-			registerSpy(beanFactory, registry, (SpyDefinition) definition, field);
+		else if (definition instanceof SpyDefinition spyDefinition) {
+			registerSpy(beanFactory, registry, spyDefinition, field);
 		}
 	}
 
@@ -247,13 +248,15 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 		return candidates;
 	}
 
-	private Set<String> getExistingBeans(ConfigurableListableBeanFactory beanFactory, ResolvableType type) {
-		Set<String> beans = new LinkedHashSet<>(Arrays.asList(beanFactory.getBeanNamesForType(type, true, false)));
-		String typeName = type.resolve(Object.class).getName();
+	private Set<String> getExistingBeans(ConfigurableListableBeanFactory beanFactory, ResolvableType resolvableType) {
+		Set<String> beans = new LinkedHashSet<>(
+				Arrays.asList(beanFactory.getBeanNamesForType(resolvableType, true, false)));
+		Class<?> type = resolvableType.resolve(Object.class);
 		for (String beanName : beanFactory.getBeanNamesForType(FactoryBean.class, true, false)) {
 			beanName = BeanFactoryUtils.transformedBeanName(beanName);
 			BeanDefinition beanDefinition = beanFactory.getBeanDefinition(beanName);
-			if (typeName.equals(beanDefinition.getAttribute(FactoryBean.OBJECT_TYPE_ATTRIBUTE))) {
+			Object attribute = beanDefinition.getAttribute(FactoryBean.OBJECT_TYPE_ATTRIBUTE);
+			if (resolvableType.equals(attribute) || type.equals(attribute)) {
 				beans.add(beanName);
 			}
 		}
@@ -355,9 +358,13 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 	private void inject(Field field, Object target, String beanName) {
 		try {
 			field.setAccessible(true);
-			Assert.state(ReflectionUtils.getField(field, target) == null,
-					() -> "The field " + field + " cannot have an existing value");
+			Object existingValue = ReflectionUtils.getField(field, target);
 			Object bean = this.beanFactory.getBean(beanName, field.getType());
+			if (existingValue == bean) {
+				return;
+			}
+			Assert.state(existingValue == null, () -> "The existing value '" + existingValue + "' of field '" + field
+					+ "' is not the same as the new value '" + bean + "'");
 			ReflectionUtils.setField(field, target, bean);
 		}
 		catch (Throwable ex) {
@@ -429,6 +436,8 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 
 		private static final String BEAN_NAME = SpyPostProcessor.class.getName();
 
+		private final Map<String, Object> earlySpyReferences = new ConcurrentHashMap<>(16);
+
 		private final MockitoPostProcessor mockitoPostProcessor;
 
 		SpyPostProcessor(MockitoPostProcessor mockitoPostProcessor) {
@@ -442,6 +451,10 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 
 		@Override
 		public Object getEarlyBeanReference(Object bean, String beanName) throws BeansException {
+			if (bean instanceof FactoryBean) {
+				return bean;
+			}
+			this.earlySpyReferences.put(getCacheKey(bean, beanName), bean);
 			return this.mockitoPostProcessor.createSpyIfNecessary(bean, beanName);
 		}
 
@@ -450,7 +463,14 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 			if (bean instanceof FactoryBean) {
 				return bean;
 			}
-			return this.mockitoPostProcessor.createSpyIfNecessary(bean, beanName);
+			if (this.earlySpyReferences.remove(getCacheKey(bean, beanName)) != bean) {
+				return this.mockitoPostProcessor.createSpyIfNecessary(bean, beanName);
+			}
+			return bean;
+		}
+
+		private String getCacheKey(Object bean, String beanName) {
+			return StringUtils.hasLength(beanName) ? beanName : bean.getClass().getName();
 		}
 
 		static void register(BeanDefinitionRegistry registry) {

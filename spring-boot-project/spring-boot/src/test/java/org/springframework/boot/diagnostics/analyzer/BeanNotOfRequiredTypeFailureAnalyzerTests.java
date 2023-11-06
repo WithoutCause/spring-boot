@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,12 +29,13 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.assertj.core.api.Assertions.fail;
 
 /**
  * Tests for {@link BeanNotOfRequiredTypeFailureAnalyzer}.
  *
  * @author Andy Wilkinson
+ * @author Scott Frederick
  */
 class BeanNotOfRequiredTypeFailureAnalyzerTests {
 
@@ -44,8 +45,13 @@ class BeanNotOfRequiredTypeFailureAnalyzerTests {
 	void jdkProxyCausesInjectionFailure() {
 		FailureAnalysis analysis = performAnalysis(JdkProxyConfiguration.class);
 		assertThat(analysis.getDescription()).startsWith("The bean 'asyncBean'");
-		assertThat(analysis.getDescription()).contains("'" + AsyncBean.class.getName() + "'");
-		assertThat(analysis.getDescription()).endsWith(String.format("%s%n", SomeInterface.class.getName()));
+		assertThat(analysis.getDescription())
+			.containsPattern("The bean is of type '" + AsyncBean.class.getPackage().getName() + ".\\$Proxy.*'");
+		assertThat(analysis.getDescription())
+			.contains(String.format("and implements:%n\t") + SomeInterface.class.getName());
+		assertThat(analysis.getDescription()).contains("Expected a bean of type '" + AsyncBean.class.getName() + "'");
+		assertThat(analysis.getDescription())
+			.contains(String.format("which implements:%n\t") + SomeInterface.class.getName());
 	}
 
 	private FailureAnalysis performAnalysis(Class<?> configuration) {

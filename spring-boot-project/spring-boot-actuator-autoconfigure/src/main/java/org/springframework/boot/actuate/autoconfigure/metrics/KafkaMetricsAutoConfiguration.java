@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import io.micrometer.core.instrument.binder.kafka.KafkaStreamsMetrics;
 
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
-import org.springframework.boot.autoconfigure.AutoConfigureBefore;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.kafka.DefaultKafkaConsumerFactoryCustomizer;
@@ -46,9 +45,8 @@ import org.springframework.kafka.streams.KafkaStreamsMicrometerListener;
  * @author Eddú Meléndez
  * @since 2.1.0
  */
-@Configuration(proxyBeanMethods = false)
-@AutoConfigureBefore(KafkaAutoConfiguration.class)
-@AutoConfigureAfter(MetricsAutoConfiguration.class)
+@AutoConfiguration(before = KafkaAutoConfiguration.class,
+		after = { MetricsAutoConfiguration.class, CompositeMeterRegistryAutoConfiguration.class })
 @ConditionalOnClass({ KafkaClientMetrics.class, ProducerFactory.class })
 @ConditionalOnBean(MeterRegistry.class)
 public class KafkaMetricsAutoConfiguration {
@@ -76,7 +74,7 @@ public class KafkaMetricsAutoConfiguration {
 	static class KafkaStreamsMetricsConfiguration {
 
 		@Bean
-		StreamsBuilderFactoryBeanCustomizer kafkaStreamsProducerMetrics(MeterRegistry meterRegistry) {
+		StreamsBuilderFactoryBeanCustomizer kafkaStreamsMetrics(MeterRegistry meterRegistry) {
 			return (factoryBean) -> factoryBean.addListener(new KafkaStreamsMicrometerListener(meterRegistry));
 		}
 

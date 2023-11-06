@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import org.springframework.context.ApplicationContext;
  * Components can inject this class to get the current state information. To update the
  * state of the application an {@link AvailabilityChangeEvent} should be
  * {@link ApplicationContext#publishEvent published} to the application context with
- * directly or via {@link AvailabilityChangeEvent#publish}.
+ * directly or through {@link AvailabilityChangeEvent#publish}.
  *
  * @author Brian Clozel
  * @author Phillip Webb
@@ -53,7 +53,7 @@ public interface ApplicationAvailability {
 	 * @param <S> the state type
 	 * @param stateType the state type
 	 * @param defaultState the default state to return if no event of the given type has
-	 * been published yet (must not be {@code null}.
+	 * been published yet (must not be {@code null}).
 	 * @return the readiness state
 	 * @see #getState(Class)
 	 */

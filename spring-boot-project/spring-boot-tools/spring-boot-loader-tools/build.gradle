@@ -11,9 +11,26 @@ def generatedResources = "${buildDir}/generated-resources/main"
 configurations {
 	loader {
 		extendsFrom dependencyManagement
+		transitive = false
+	}
+	loaderClassic {
+		extendsFrom dependencyManagement
+		transitive = false
 	}
 	jarmode {
 		extendsFrom dependencyManagement
+		transitive = false
+	}
+	all {
+		resolutionStrategy {
+			eachDependency { dependency ->
+				// Downgrade Spring Framework as Gradle cannot cope with 6.1.0-M1's
+				// multi-version jar files with bytecode in META-INF/versions/21
+				if (dependency.requested.group.equals("org.springframework")) {
+					dependency.useVersion("6.0.10")
+				}
+			}
+		}
 	}
 }
 
@@ -24,6 +41,7 @@ dependencies {
 	compileOnly("ch.qos.logback:logback-classic")
 
 	loader(project(":spring-boot-project:spring-boot-tools:spring-boot-loader"))
+	loaderClassic(project(":spring-boot-project:spring-boot-tools:spring-boot-loader-classic"))
 
 	jarmode(project(":spring-boot-project:spring-boot-tools:spring-boot-jarmode-layertools"))
 
@@ -33,16 +51,14 @@ dependencies {
 	testImplementation("org.zeroturnaround:zt-zip:1.13")
 }
 
-sourceSets {
-	main {
-		resources.srcDirs generatedResources
-	}
-}
-
 task reproducibleLoaderJar(type: Jar) {
 	dependsOn configurations.loader
 	from {
-		zipTree(configurations.loader.incoming.files.filter {it.name.startsWith "spring-boot-loader" }.singleFile)
+		zipTree(configurations.loader.incoming.files.singleFile).matching {
+			exclude "META-INF/LICENSE.txt"
+			exclude "META-INF/NOTICE.txt"
+			exclude "META-INF/spring-boot.properties"
+		}
 	}
 	reproducibleFileOrder = true
 	preserveFileTimestamps = false
@@ -50,24 +66,38 @@ task reproducibleLoaderJar(type: Jar) {
 	destinationDirectory = file("${generatedResources}/META-INF/loader")
 }
 
-task reproducibleJarModeLayerToolsJar(type: Jar) {
-	dependsOn configurations.jarmode
+task reproducibleLoaderClassicJar(type: Jar) {
+	dependsOn configurations.loaderClassic
 	from {
-		zipTree(configurations.jarmode.incoming.files.filter {it.name.startsWith "spring-boot-jarmode-layertools" }.singleFile)
+		zipTree(configurations.loaderClassic.incoming.files.singleFile).matching {
+			exclude "META-INF/LICENSE.txt"
+			exclude "META-INF/NOTICE.txt"
+			exclude "META-INF/spring-boot.properties"
+		}
 	}
 	reproducibleFileOrder = true
 	preserveFileTimestamps = false
-	archiveFileName = "spring-boot-jarmode-layertools.jar"
-	destinationDirectory = file("${generatedResources}/META-INF/jarmode")
+	archiveFileName = "spring-boot-loader-classic.jar"
+	destinationDirectory = file("${generatedResources}/META-INF/loader")
 }
 
-processResources {
-	dependsOn reproducibleLoaderJar
-	dependsOn reproducibleJarModeLayerToolsJar
+task layerToolsJar(type: Sync) {
+	dependsOn configurations.jarmode
+	from {
+		file(configurations.jarmode.incoming.files.singleFile)
+	}
+	rename({ "spring-boot-jarmode-layertools.jar" })
+	into(file("${generatedResources}/META-INF/jarmode"))
+}
+
+sourceSets {
+	main {
+		output.dir(generatedResources, builtBy: [layerToolsJar, reproducibleLoaderJar, reproducibleLoaderClassicJar])
+	}
 }
 
 compileJava {
-	if ((!project.hasProperty("buildJavaHome")) && JavaVersion.current() == JavaVersion.VERSION_1_8) {
-		options.compilerArgs += ['-Xlint:-sunapi', '-XDenableSunApiLintControl']	
-	}	
+	if ((!project.hasProperty("toolchainVersion")) && JavaVersion.current() == JavaVersion.VERSION_1_8) {
+		options.compilerArgs += ['-Xlint:-sunapi', '-XDenableSunApiLintControl']
+	}
 }

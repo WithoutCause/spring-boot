@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,11 @@
 
 package org.springframework.boot.autoconfigure.r2dbc;
 
+import java.time.Duration;
+
 import io.r2dbc.spi.Connection;
 import io.r2dbc.spi.ConnectionFactory;
+import io.r2dbc.spi.TransactionDefinition;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -34,6 +37,7 @@ import org.springframework.transaction.reactive.TransactionSynchronizationManage
 import org.springframework.transaction.reactive.TransactionalOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
@@ -56,17 +60,21 @@ class R2dbcTransactionManagerAutoConfigurationTests {
 	@Test
 	void singleTransactionManager() {
 		this.contextRunner.withUserConfiguration(SingleConnectionFactoryConfiguration.class)
-				.run((context) -> assertThat(context).hasSingleBean(TransactionalOperator.class)
-						.hasSingleBean(ReactiveTransactionManager.class));
+			.run((context) -> assertThat(context).hasSingleBean(TransactionalOperator.class)
+				.hasSingleBean(ReactiveTransactionManager.class));
 	}
 
 	@Test
 	void transactionManagerEnabled() {
 		this.contextRunner.withUserConfiguration(SingleConnectionFactoryConfiguration.class, BaseConfiguration.class)
-				.run((context) -> {
-					TransactionalService bean = context.getBean(TransactionalService.class);
-					bean.isTransactionActive().as(StepVerifier::create).expectNext(true).verifyComplete();
-				});
+			.run((context) -> {
+				TransactionalService bean = context.getBean(TransactionalService.class);
+				bean.isTransactionActive()
+					.as(StepVerifier::create)
+					.expectNext(true)
+					.expectComplete()
+					.verify(Duration.ofSeconds(30));
+			});
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -77,7 +85,7 @@ class R2dbcTransactionManagerAutoConfigurationTests {
 			ConnectionFactory connectionFactory = mock(ConnectionFactory.class);
 			Connection connection = mock(Connection.class);
 			given(connectionFactory.create()).willAnswer((invocation) -> Mono.just(connection));
-			given(connection.beginTransaction()).willReturn(Mono.empty());
+			given(connection.beginTransaction(any(TransactionDefinition.class))).willReturn(Mono.empty());
 			given(connection.commitTransaction()).willReturn(Mono.empty());
 			given(connection.close()).willReturn(Mono.empty());
 			return connectionFactory;
@@ -108,7 +116,7 @@ class R2dbcTransactionManagerAutoConfigurationTests {
 		@Override
 		public Mono<Boolean> isTransactionActive() {
 			return TransactionSynchronizationManager.forCurrentTransaction()
-					.map(TransactionSynchronizationManager::isActualTransactionActive);
+				.map(TransactionSynchronizationManager::isActualTransactionActive);
 		}
 
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package org.springframework.boot.autoconfigure.kafka;
 
 import java.util.Map;
 
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 
@@ -28,12 +30,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.source.InvalidConfigurationPropertyValueException;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.kafka.annotation.KafkaStreamsDefaultConfiguration;
 import org.springframework.kafka.config.KafkaStreamsConfiguration;
 import org.springframework.kafka.config.StreamsBuilderFactoryBean;
+import org.springframework.kafka.core.CleanupConfig;
 
 /**
  * Configuration for Kafka Streams annotation-driven support.
@@ -41,6 +45,9 @@ import org.springframework.kafka.config.StreamsBuilderFactoryBean;
  * @author Gary Russell
  * @author Stephane Nicoll
  * @author Eddú Meléndez
+ * @author Moritz Halbritter
+ * @author Andy Wilkinson
+ * @author Scott Frederick
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass(StreamsBuilder.class)
@@ -55,17 +62,19 @@ class KafkaStreamsAnnotationDrivenConfiguration {
 
 	@ConditionalOnMissingBean
 	@Bean(KafkaStreamsDefaultConfiguration.DEFAULT_STREAMS_CONFIG_BEAN_NAME)
-	KafkaStreamsConfiguration defaultKafkaStreamsConfig(Environment environment) {
-		Map<String, Object> streamsProperties = this.properties.buildStreamsProperties();
+	KafkaStreamsConfiguration defaultKafkaStreamsConfig(Environment environment,
+			KafkaConnectionDetails connectionDetails, ObjectProvider<SslBundles> sslBundles) {
+		Map<String, Object> properties = this.properties.buildStreamsProperties(sslBundles.getIfAvailable());
+		applyKafkaConnectionDetailsForStreams(properties, connectionDetails);
 		if (this.properties.getStreams().getApplicationId() == null) {
 			String applicationName = environment.getProperty("spring.application.name");
 			if (applicationName == null) {
 				throw new InvalidConfigurationPropertyValueException("spring.kafka.streams.application-id", null,
 						"This property is mandatory and fallback 'spring.application.name' is not set either.");
 			}
-			streamsProperties.put(StreamsConfig.APPLICATION_ID_CONFIG, applicationName);
+			properties.put(StreamsConfig.APPLICATION_ID_CONFIG, applicationName);
 		}
-		return new KafkaStreamsConfiguration(streamsProperties);
+		return new KafkaStreamsConfiguration(properties);
 	}
 
 	@Bean
@@ -74,6 +83,14 @@ class KafkaStreamsAnnotationDrivenConfiguration {
 			ObjectProvider<StreamsBuilderFactoryBeanCustomizer> customizers) {
 		customizers.orderedStream().forEach((customizer) -> customizer.customize(factoryBean));
 		return new KafkaStreamsFactoryBeanConfigurer(this.properties, factoryBean);
+	}
+
+	private void applyKafkaConnectionDetailsForStreams(Map<String, Object> properties,
+			KafkaConnectionDetails connectionDetails) {
+		properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, connectionDetails.getStreamsBootstrapServers());
+		if (!(connectionDetails instanceof PropertiesKafkaConnectionDetails)) {
+			properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "PLAINTEXT");
+		}
 	}
 
 	// Separate class required to avoid BeanCurrentlyInCreationException
@@ -91,6 +108,9 @@ class KafkaStreamsAnnotationDrivenConfiguration {
 		@Override
 		public void afterPropertiesSet() {
 			this.factoryBean.setAutoStartup(this.properties.getStreams().isAutoStartup());
+			KafkaProperties.Cleanup cleanup = this.properties.getStreams().getCleanup();
+			CleanupConfig cleanupConfig = new CleanupConfig(cleanup.isOnStartup(), cleanup.isOnShutdown());
+			this.factoryBean.setCleanupConfig(cleanupConfig);
 		}
 
 	}

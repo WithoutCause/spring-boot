@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.springframework.boot.web.embedded.jetty;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -29,10 +28,7 @@ import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.NetworkConnector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.server.handler.HandlerWrapper;
 import org.eclipse.jetty.server.handler.StatisticsHandler;
-import org.eclipse.jetty.util.component.AbstractLifeCycle;
 
 import org.springframework.boot.web.server.GracefulShutdownCallback;
 import org.springframework.boot.web.server.GracefulShutdownResult;
@@ -40,7 +36,6 @@ import org.springframework.boot.web.server.PortInUseException;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.util.Assert;
-import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -105,11 +100,11 @@ public class JettyWebServer implements WebServer {
 	}
 
 	private StatisticsHandler findStatisticsHandler(Handler handler) {
-		if (handler instanceof StatisticsHandler) {
-			return (StatisticsHandler) handler;
+		if (handler instanceof StatisticsHandler statisticsHandler) {
+			return statisticsHandler;
 		}
-		if (handler instanceof HandlerWrapper) {
-			return findStatisticsHandler(((HandlerWrapper) handler).getHandler());
+		if (handler instanceof Handler.Wrapper handlerWrapper) {
+			return findStatisticsHandler(handlerWrapper.getHandler());
 		}
 		return null;
 	}
@@ -120,18 +115,7 @@ public class JettyWebServer implements WebServer {
 				// Cache the connectors and then remove them to prevent requests being
 				// handled before the application context is ready.
 				this.connectors = this.server.getConnectors();
-				this.server.addBean(new AbstractLifeCycle() {
-
-					@Override
-					protected void doStart() throws Exception {
-						for (Connector connector : JettyWebServer.this.connectors) {
-							Assert.state(connector.isStopped(),
-									() -> "Connector " + connector + " has been started prematurely");
-						}
-						JettyWebServer.this.server.setConnectors(null);
-					}
-
-				});
+				JettyWebServer.this.server.setConnectors(null);
 				// Start the server so that the ServletContext is available
 				this.server.start();
 				this.server.setStopAtShutdown(false);
@@ -174,16 +158,14 @@ public class JettyWebServer implements WebServer {
 						connector.start();
 					}
 					catch (IOException ex) {
-						if (connector instanceof NetworkConnector) {
-							PortInUseException.throwIfPortBindingException(ex,
-									() -> ((NetworkConnector) connector).getPort());
+						if (connector instanceof NetworkConnector networkConnector) {
+							PortInUseException.throwIfPortBindingException(ex, networkConnector::getPort);
 						}
 						throw ex;
 					}
 				}
 				this.started = true;
-				logger.info("Jetty started on port(s) " + getActualPortsDescription() + " with context path '"
-						+ getContextPath() + "'");
+				logger.info(getStartedLogMessage());
 			}
 			catch (WebServerException ex) {
 				stopSilently();
@@ -196,27 +178,25 @@ public class JettyWebServer implements WebServer {
 		}
 	}
 
-	private String getActualPortsDescription() {
-		StringBuilder ports = new StringBuilder();
-		for (Connector connector : this.server.getConnectors()) {
-			if (ports.length() != 0) {
-				ports.append(", ");
-			}
-			ports.append(getLocalPort(connector)).append(getProtocols(connector));
-		}
-		return ports.toString();
+	String getStartedLogMessage() {
+		return "Jetty started on " + getActualPortsDescription() + " with context path '" + getContextPath() + "'";
 	}
 
-	private Integer getLocalPort(Connector connector) {
-		try {
-			// Jetty 9 internals are different, but the method name is the same
-			return (Integer) ReflectionUtils
-					.invokeMethod(ReflectionUtils.findMethod(connector.getClass(), "getLocalPort"), connector);
+	private String getActualPortsDescription() {
+		StringBuilder description = new StringBuilder("port");
+		Connector[] connectors = this.server.getConnectors();
+		if (connectors.length != 1) {
+			description.append("s");
 		}
-		catch (Exception ex) {
-			logger.info("could not determine port ( " + ex.getMessage() + ")");
-			return 0;
+		description.append(" ");
+		for (int i = 0; i < connectors.length; i++) {
+			if (i != 0) {
+				description.append(", ");
+			}
+			Connector connector = connectors[i];
+			description.append(getLocalPort(connector)).append(getProtocols(connector));
 		}
+		return description.toString();
 	}
 
 	private String getProtocols(Connector connector) {
@@ -225,31 +205,39 @@ public class JettyWebServer implements WebServer {
 	}
 
 	private String getContextPath() {
-		return Arrays.stream(this.server.getHandlers()).map(this::findContextHandler).filter(Objects::nonNull)
-				.map(ContextHandler::getContextPath).collect(Collectors.joining(" "));
+		return this.server.getHandlers()
+			.stream()
+			.map(this::findContextHandler)
+			.filter(Objects::nonNull)
+			.map(ContextHandler::getContextPath)
+			.collect(Collectors.joining(" "));
 	}
 
 	private ContextHandler findContextHandler(Handler handler) {
-		while (handler instanceof HandlerWrapper) {
-			if (handler instanceof ContextHandler) {
-				return (ContextHandler) handler;
+		while (handler instanceof Handler.Wrapper handlerWrapper) {
+			if (handler instanceof ContextHandler contextHandler) {
+				return contextHandler;
 			}
-			handler = ((HandlerWrapper) handler).getHandler();
+			handler = handlerWrapper.getHandler();
 		}
 		return null;
 	}
 
-	private void handleDeferredInitialize(Handler... handlers) throws Exception {
+	private void handleDeferredInitialize(List<Handler> handlers) throws Exception {
 		for (Handler handler : handlers) {
-			if (handler instanceof JettyEmbeddedWebAppContext) {
-				((JettyEmbeddedWebAppContext) handler).deferredInitialize();
-			}
-			else if (handler instanceof HandlerWrapper) {
-				handleDeferredInitialize(((HandlerWrapper) handler).getHandler());
-			}
-			else if (handler instanceof HandlerCollection) {
-				handleDeferredInitialize(((HandlerCollection) handler).getHandlers());
-			}
+			handleDeferredInitialize(handler);
+		}
+	}
+
+	private void handleDeferredInitialize(Handler handler) throws Exception {
+		if (handler instanceof JettyEmbeddedWebAppContext jettyEmbeddedWebAppContext) {
+			jettyEmbeddedWebAppContext.deferredInitialize();
+		}
+		else if (handler instanceof Handler.Wrapper handlerWrapper) {
+			handleDeferredInitialize(handlerWrapper.getHandler());
+		}
+		else if (handler instanceof Handler.Collection handlerCollection) {
+			handleDeferredInitialize(handlerCollection.getHandlers());
 		}
 	}
 
@@ -261,7 +249,9 @@ public class JettyWebServer implements WebServer {
 				this.gracefulShutdown.abort();
 			}
 			try {
-				this.server.stop();
+				for (Connector connector : this.server.getConnectors()) {
+					connector.stop();
+				}
 			}
 			catch (InterruptedException ex) {
 				Thread.currentThread().interrupt();
@@ -273,11 +263,32 @@ public class JettyWebServer implements WebServer {
 	}
 
 	@Override
+	public void destroy() {
+		synchronized (this.monitor) {
+			try {
+				this.server.stop();
+			}
+			catch (Exception ex) {
+				throw new WebServerException("Unable to destroy embedded Jetty server", ex);
+			}
+		}
+	}
+
+	@Override
 	public int getPort() {
 		Connector[] connectors = this.server.getConnectors();
 		for (Connector connector : connectors) {
-			// Probably only one...
-			return getLocalPort(connector);
+			int localPort = getLocalPort(connector);
+			if (localPort > 0) {
+				return localPort;
+			}
+		}
+		return -1;
+	}
+
+	private int getLocalPort(Connector connector) {
+		if (connector instanceof NetworkConnector networkConnector) {
+			return networkConnector.getLocalPort();
 		}
 		return 0;
 	}

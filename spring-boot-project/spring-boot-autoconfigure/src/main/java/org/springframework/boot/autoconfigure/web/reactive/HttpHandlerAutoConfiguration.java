@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import java.util.Collections;
 import java.util.Map;
 
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -43,18 +43,17 @@ import org.springframework.web.server.adapter.WebHttpHandlerBuilder;
  * @author Stephane Nicoll
  * @since 2.0.0
  */
-@Configuration(proxyBeanMethods = false)
+@AutoConfiguration(after = { WebFluxAutoConfiguration.class })
 @ConditionalOnClass({ DispatcherHandler.class, HttpHandler.class })
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
 @ConditionalOnMissingBean(HttpHandler.class)
-@AutoConfigureAfter({ WebFluxAutoConfiguration.class })
 @AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE + 10)
 public class HttpHandlerAutoConfiguration {
 
 	@Configuration(proxyBeanMethods = false)
 	public static class AnnotationConfig {
 
-		private ApplicationContext applicationContext;
+		private final ApplicationContext applicationContext;
 
 		public AnnotationConfig(ApplicationContext applicationContext) {
 			this.applicationContext = applicationContext;

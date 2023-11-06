@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,10 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Function;
 
-import org.springframework.boot.logging.java.JavaLoggingSystem;
-import org.springframework.boot.logging.log4j2.Log4J2LoggingSystem;
-import org.springframework.boot.logging.logback.LogbackLoggingSystem;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.Environment;
+import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
 
@@ -58,24 +57,23 @@ public abstract class LoggingSystem {
 	 */
 	public static final String ROOT_LOGGER_NAME = "ROOT";
 
-	private static final Function<ClassLoader, LoggingSystem> SYSTEM_FACTORY;
+	private static final LoggingSystemFactory SYSTEM_FACTORY = LoggingSystemFactory.fromSpringFactories();
 
-	static {
-		ClassLoader classLoader = LoggingSystem.class.getClassLoader();
-		if (ClassUtils.isPresent("ch.qos.logback.core.Appender", classLoader)) {
-			SYSTEM_FACTORY = (cl) -> new LogbackLoggingSystem(cl);
-		}
-		else if (ClassUtils.isPresent("org.apache.logging.log4j.core.impl.Log4jContextFactory", classLoader)) {
-			SYSTEM_FACTORY = (cl) -> new Log4J2LoggingSystem(cl);
-		}
-		else if (ClassUtils.isPresent("java.util.logging.LogManager", classLoader)) {
-			SYSTEM_FACTORY = (cl) -> new JavaLoggingSystem(cl);
-		}
-		else {
-			SYSTEM_FACTORY = (cl) -> {
-				throw new IllegalStateException("No suitable logging system located");
-			};
-		}
+	/**
+	 * The name of an {@link Environment} property used to indicate that a correlation ID
+	 * is expected to be logged at some point.
+	 * @since 3.2.0
+	 */
+	public static final String EXPECT_CORRELATION_ID_PROPERTY = "logging.expect-correlation-id";
+
+	/**
+	 * Return the {@link LoggingSystemProperties} that should be applied.
+	 * @param environment the {@link ConfigurableEnvironment} used to obtain value
+	 * @return the {@link LoggingSystemProperties} to apply
+	 * @since 2.4.0
+	 */
+	public LoggingSystemProperties getSystemProperties(ConfigurableEnvironment environment) {
+		return new LoggingSystemProperties(environment);
 	}
 
 	/**
@@ -159,19 +157,21 @@ public abstract class LoggingSystem {
 	 * @return the logging system
 	 */
 	public static LoggingSystem get(ClassLoader classLoader) {
-		String loggingSystem = System.getProperty(SYSTEM_PROPERTY);
-		if (StringUtils.hasLength(loggingSystem)) {
-			if (NONE.equals(loggingSystem)) {
+		String loggingSystemClassName = System.getProperty(SYSTEM_PROPERTY);
+		if (StringUtils.hasLength(loggingSystemClassName)) {
+			if (NONE.equals(loggingSystemClassName)) {
 				return new NoOpLoggingSystem();
 			}
-			return get(classLoader, loggingSystem);
+			return get(classLoader, loggingSystemClassName);
 		}
-		return SYSTEM_FACTORY.apply(classLoader);
+		LoggingSystem loggingSystem = SYSTEM_FACTORY.getLoggingSystem(classLoader);
+		Assert.state(loggingSystem != null, "No suitable logging system located");
+		return loggingSystem;
 	}
 
-	private static LoggingSystem get(ClassLoader classLoader, String loggingSystemClass) {
+	private static LoggingSystem get(ClassLoader classLoader, String loggingSystemClassName) {
 		try {
-			Class<?> systemClass = ClassUtils.forName(loggingSystemClass, classLoader);
+			Class<?> systemClass = ClassUtils.forName(loggingSystemClassName, classLoader);
 			Constructor<?> constructor = systemClass.getDeclaredConstructor(ClassLoader.class);
 			constructor.setAccessible(true);
 			return (LoggingSystem) constructor.newInstance(classLoader);

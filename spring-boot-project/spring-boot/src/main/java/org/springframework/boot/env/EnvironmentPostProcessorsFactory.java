@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,9 @@
 
 package org.springframework.boot.env;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.function.Function;
 
+import org.springframework.boot.ConfigurableBootstrapContext;
 import org.springframework.boot.logging.DeferredLogFactory;
 import org.springframework.core.io.support.SpringFactoriesLoader;
 
@@ -36,9 +35,11 @@ public interface EnvironmentPostProcessorsFactory {
 	/**
 	 * Create all requested {@link EnvironmentPostProcessor} instances.
 	 * @param logFactory a deferred log factory
+	 * @param bootstrapContext a bootstrap context
 	 * @return the post processor instances
 	 */
-	List<EnvironmentPostProcessor> getEnvironmentPostProcessors(DeferredLogFactory logFactory);
+	List<EnvironmentPostProcessor> getEnvironmentPostProcessors(DeferredLogFactory logFactory,
+			ConfigurableBootstrapContext bootstrapContext);
 
 	/**
 	 * Return a {@link EnvironmentPostProcessorsFactory} backed by
@@ -47,8 +48,8 @@ public interface EnvironmentPostProcessorsFactory {
 	 * @return an {@link EnvironmentPostProcessorsFactory} instance
 	 */
 	static EnvironmentPostProcessorsFactory fromSpringFactories(ClassLoader classLoader) {
-		return new ReflectionEnvironmentPostProcessorsFactory(
-				SpringFactoriesLoader.loadFactoryNames(EnvironmentPostProcessor.class, classLoader));
+		return new SpringFactoriesEnvironmentPostProcessorsFactory(
+				SpringFactoriesLoader.forDefaultResourceLocation(classLoader));
 	}
 
 	/**
@@ -68,17 +69,19 @@ public interface EnvironmentPostProcessorsFactory {
 	 * @return an {@link EnvironmentPostProcessorsFactory} instance
 	 */
 	static EnvironmentPostProcessorsFactory of(String... classNames) {
-		return new ReflectionEnvironmentPostProcessorsFactory(classNames);
+		return of(null, classNames);
 	}
 
 	/**
-	 * Create a {@link EnvironmentPostProcessorsFactory} containing only a single post
-	 * processor.
-	 * @param factory the factory used to create the post processor
+	 * Return a {@link EnvironmentPostProcessorsFactory} that reflectively creates post
+	 * processors from the given class names.
+	 * @param classLoader the source class loader
+	 * @param classNames the post processor class names
 	 * @return an {@link EnvironmentPostProcessorsFactory} instance
+	 * @since 2.4.8
 	 */
-	static EnvironmentPostProcessorsFactory singleton(Function<DeferredLogFactory, EnvironmentPostProcessor> factory) {
-		return (logFactory) -> Collections.singletonList(factory.apply(logFactory));
+	static EnvironmentPostProcessorsFactory of(ClassLoader classLoader, String... classNames) {
+		return new ReflectionEnvironmentPostProcessorsFactory(classLoader, classNames);
 	}
 
 }

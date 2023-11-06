@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ class JmsPropertiesTests {
 	@Test
 	void formatConcurrencyOnlyLowerBound() {
 		JmsProperties properties = new JmsProperties();
-		properties.getListener().setConcurrency(2);
-		assertThat(properties.getListener().formatConcurrency()).isEqualTo("2");
+		properties.getListener().setMinConcurrency(2);
+		assertThat(properties.getListener().formatConcurrency()).isEqualTo("2-2");
 	}
 
 	@Test
@@ -54,7 +54,7 @@ class JmsPropertiesTests {
 	@Test
 	void formatConcurrencyBothBounds() {
 		JmsProperties properties = new JmsProperties();
-		properties.getListener().setConcurrency(2);
+		properties.getListener().setMinConcurrency(2);
 		properties.getListener().setMaxConcurrency(10);
 		assertThat(properties.getListener().formatConcurrency()).isEqualTo("2-10");
 	}
@@ -83,7 +83,7 @@ class JmsPropertiesTests {
 	@Test
 	void defaultReceiveTimeoutMatchesListenerContainersDefault() {
 		assertThat(new JmsProperties().getListener().getReceiveTimeout())
-				.hasMillis(AbstractPollingMessageListenerContainer.DEFAULT_RECEIVE_TIMEOUT);
+			.hasMillis(AbstractPollingMessageListenerContainer.DEFAULT_RECEIVE_TIMEOUT);
 	}
 
 }

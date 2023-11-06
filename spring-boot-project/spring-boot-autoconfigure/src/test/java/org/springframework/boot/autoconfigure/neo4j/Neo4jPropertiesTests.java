@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.springframework.boot.autoconfigure.neo4j;
 
-import java.net.URI;
 import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
@@ -53,9 +52,9 @@ class Neo4jPropertiesTests {
 		Neo4jProperties properties = new Neo4jProperties();
 		assertThat(properties.getSecurity().isEncrypted()).isEqualTo(defaultConfig.encrypted());
 		assertThat(properties.getSecurity().getTrustStrategy().name())
-				.isEqualTo(defaultConfig.trustStrategy().strategy().name());
+			.isEqualTo(defaultConfig.trustStrategy().strategy().name());
 		assertThat(properties.getSecurity().isHostnameVerificationEnabled())
-				.isEqualTo(defaultConfig.trustStrategy().isHostnameVerificationEnabled());
+			.isEqualTo(defaultConfig.trustStrategy().isHostnameVerificationEnabled());
 	}
 
 	@Test
@@ -64,12 +63,6 @@ class Neo4jPropertiesTests {
 		Neo4jProperties properties = new Neo4jProperties();
 		assertDuration(properties.getConnectionTimeout(), defaultConfig.connectionTimeoutMillis());
 		assertDuration(properties.getMaxTransactionRetryTime(), RetrySettings.DEFAULT.maxRetryTimeMs());
-	}
-
-	@Test
-	void shouldAssumeDefaultValuesForUrl() {
-		Neo4jProperties driverProperties = new Neo4jProperties();
-		assertThat(driverProperties.getUri()).isEqualTo(URI.create("bolt://localhost:7687"));
 	}
 
 	private static void assertDuration(Duration duration, long expectedValueInMillis) {

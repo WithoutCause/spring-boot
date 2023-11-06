@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,9 @@
  */
 
 package org.springframework.boot.autoconfigure.web.servlet.error;
+
+import java.time.Clock;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,8 +63,24 @@ class ErrorMvcAutoConfigurationTests {
 			String responseString = ((MockHttpServletResponse) webRequest.getResponse()).getContentAsString();
 			assertThat(responseString).contains(
 					"<p>This application has no explicit mapping for /error, so you are seeing this as a fallback.</p>")
-					.contains("<div>Exception message</div>")
-					.contains("<div style='white-space:pre-wrap;'>java.lang.IllegalStateException");
+				.contains("<div>Exception message</div>")
+				.contains("<div style='white-space:pre-wrap;'>java.lang.IllegalStateException");
+		});
+	}
+
+	@Test
+	void renderCanUseJavaTimeTypeAsTimestamp() { // gh-23256
+		this.contextRunner.run((context) -> {
+			View errorView = context.getBean("error", View.class);
+			ErrorAttributes errorAttributes = context.getBean(ErrorAttributes.class);
+			DispatcherServletWebRequest webRequest = createWebRequest(new IllegalStateException("Exception message"),
+					false);
+			Map<String, Object> attributes = errorAttributes.getErrorAttributes(webRequest, withAllOptions());
+			attributes.put("timestamp", Clock.systemUTC().instant());
+			errorView.render(attributes, webRequest.getRequest(), webRequest.getResponse());
+			assertThat(webRequest.getResponse().getContentType()).isEqualTo("text/html;charset=UTF-8");
+			String responseString = ((MockHttpServletResponse) webRequest.getResponse()).getContentAsString();
+			assertThat(responseString).contains("This application has no explicit mapping for /error");
 		});
 	}
 
@@ -84,8 +103,8 @@ class ErrorMvcAutoConfigurationTests {
 		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/path");
 		MockHttpServletResponse response = new MockHttpServletResponse();
 		DispatcherServletWebRequest webRequest = new DispatcherServletWebRequest(request, response);
-		webRequest.setAttribute("javax.servlet.error.exception", ex, RequestAttributes.SCOPE_REQUEST);
-		webRequest.setAttribute("javax.servlet.error.request_uri", "/path", RequestAttributes.SCOPE_REQUEST);
+		webRequest.setAttribute("jakarta.servlet.error.exception", ex, RequestAttributes.SCOPE_REQUEST);
+		webRequest.setAttribute("jakarta.servlet.error.request_uri", "/path", RequestAttributes.SCOPE_REQUEST);
 		response.setCommitted(committed);
 		response.setOutputStreamAccessAllowed(!committed);
 		response.setWriterAccessAllowed(!committed);

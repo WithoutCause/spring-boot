@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
 import org.springframework.boot.autoconfigure.liquibase.LiquibaseAutoConfiguration;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnectionAutoConfiguration;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
@@ -39,7 +40,7 @@ import static org.springframework.boot.test.autoconfigure.AutoConfigurationImpor
  */
 @DataJdbcTest
 @TestPropertySource(
-		properties = "spring.datasource.schema=classpath:org/springframework/boot/test/autoconfigure/data/jdbc/schema.sql")
+		properties = "spring.sql.init.schemaLocations=classpath:org/springframework/boot/test/autoconfigure/data/jdbc/schema.sql")
 class DataJdbcTestIntegrationTests {
 
 	@Autowired
@@ -70,7 +71,7 @@ class DataJdbcTestIntegrationTests {
 	@Test
 	void didNotInjectExampleComponent() {
 		assertThatExceptionOfType(NoSuchBeanDefinitionException.class)
-				.isThrownBy(() -> this.applicationContext.getBean(ExampleComponent.class));
+			.isThrownBy(() -> this.applicationContext.getBean(ExampleComponent.class));
 	}
 
 	@Test
@@ -81,6 +82,11 @@ class DataJdbcTestIntegrationTests {
 	@Test
 	void liquibaseAutoConfigurationWasImported() {
 		assertThat(this.applicationContext).has(importedAutoConfiguration(LiquibaseAutoConfiguration.class));
+	}
+
+	@Test
+	void serviceConnectionAutoConfigurationWasImported() {
+		assertThat(this.applicationContext).has(importedAutoConfiguration(ServiceConnectionAutoConfiguration.class));
 	}
 
 }

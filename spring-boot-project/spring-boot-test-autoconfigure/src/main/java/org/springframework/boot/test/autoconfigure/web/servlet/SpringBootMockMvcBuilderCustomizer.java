@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import javax.servlet.Filter;
-
+import jakarta.servlet.Filter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -48,8 +47,8 @@ import org.springframework.web.context.WebApplicationContext;
 
 /**
  * {@link MockMvcBuilderCustomizer} for a typical Spring Boot application. Usually applied
- * automatically via {@link AutoConfigureMockMvc @AutoConfigureMockMvc}, but may also be
- * used directly.
+ * automatically through {@link AutoConfigureMockMvc @AutoConfigureMockMvc}, but may also
+ * be used directly.
  *
  * @author Phillip Webb
  * @author Andy Wilkinson
@@ -108,20 +107,17 @@ public class SpringBootMockMvcBuilderCustomizer implements MockMvcBuilderCustomi
 
 	private void addFilters(ConfigurableMockMvcBuilder<?> builder) {
 		FilterRegistrationBeans registrations = new FilterRegistrationBeans(this.context);
-		registrations.stream().map(AbstractFilterRegistrationBean.class::cast)
-				.filter(AbstractFilterRegistrationBean<?>::isEnabled)
-				.forEach((registration) -> addFilter(builder, registration));
+		registrations.stream()
+			.map(AbstractFilterRegistrationBean.class::cast)
+			.filter(AbstractFilterRegistrationBean<?>::isEnabled)
+			.forEach((registration) -> addFilter(builder, registration));
 	}
 
 	private void addFilter(ConfigurableMockMvcBuilder<?> builder, AbstractFilterRegistrationBean<?> registration) {
 		Filter filter = registration.getFilter();
 		Collection<String> urls = registration.getUrlPatterns();
-		if (urls.isEmpty()) {
-			builder.addFilters(filter);
-		}
-		else {
-			builder.addFilter(filter, StringUtils.toStringArray(urls));
-		}
+		builder.addFilter(filter, registration.getFilterName(), registration.getInitParameters(),
+				registration.determineDispatcherTypes(), StringUtils.toStringArray(urls));
 	}
 
 	public void setAddFilters(boolean addFilters) {
@@ -253,7 +249,7 @@ public class SpringBootMockMvcBuilderCustomizer implements MockMvcBuilderCustomi
 		}
 
 		void clear() {
-			this.lines.get().clear();
+			this.lines.remove();
 		}
 
 	}

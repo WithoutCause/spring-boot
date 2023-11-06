@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -30,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadFactory;
@@ -46,7 +46,6 @@ import org.springframework.boot.devtools.restart.FailureHandler.Outcome;
 import org.springframework.boot.devtools.restart.classloader.ClassLoaderFiles;
 import org.springframework.boot.devtools.restart.classloader.RestartClassLoader;
 import org.springframework.boot.logging.DeferredLog;
-import org.springframework.boot.system.JavaVersion;
 import org.springframework.cglib.core.ClassNameReader;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
@@ -69,9 +68,9 @@ import org.springframework.util.ReflectionUtils;
  * {@link #initialize(String[])} directly if your SpringApplication arguments are not
  * identical to your main method arguments.
  * <p>
- * By default, applications running in an IDE (i.e. those not packaged as "fat jars") will
- * automatically detect URLs that can change. It's also possible to manually configure
- * URLs or class file updates for remote restart scenarios.
+ * By default, applications running in an IDE (i.e. those not packaged as "uber jars")
+ * will automatically detect URLs that can change. It's also possible to manually
+ * configure URLs or class file updates for remote restart scenarios.
  *
  * @author Phillip Webb
  * @author Andy Wilkinson
@@ -93,7 +92,7 @@ public class Restarter {
 
 	private final ClassLoaderFiles classLoaderFiles = new ClassLoaderFiles();
 
-	private final Map<String, Object> attributes = new HashMap<>();
+	private final Map<String, Object> attributes = new ConcurrentHashMap<>();
 
 	private final BlockingDeque<LeakSafeThread> leakSafeThreads = new LinkedBlockingDeque<>();
 
@@ -107,7 +106,7 @@ public class Restarter {
 
 	private boolean enabled = true;
 
-	private URL[] initialUrls;
+	private final URL[] initialUrls;
 
 	private final String mainClassName;
 
@@ -276,7 +275,7 @@ public class Restarter {
 		Assert.notNull(this.mainClassName, "Unable to find the main class to restart");
 		URL[] urls = this.urls.toArray(new URL[0]);
 		ClassLoaderFiles updatedFiles = new ClassLoaderFiles(this.classLoaderFiles);
-		ClassLoader classLoader = new RestartClassLoader(this.applicationClassLoader, urls, updatedFiles, this.logger);
+		ClassLoader classLoader = new RestartClassLoader(this.applicationClassLoader, urls, updatedFiles);
 		if (this.logger.isDebugEnabled()) {
 			this.logger.debug("Starting application " + this.mainClassName + " with URLs " + Arrays.asList(urls));
 		}
@@ -321,30 +320,27 @@ public class Restarter {
 		System.runFinalization();
 	}
 
-	private void cleanupCaches() throws Exception {
+	private void cleanupCaches() {
 		Introspector.flushCaches();
 		cleanupKnownCaches();
 	}
 
-	private void cleanupKnownCaches() throws Exception {
-		// Whilst not strictly necessary it helps to cleanup soft reference caches
+	private void cleanupKnownCaches() {
+		// Whilst not strictly necessary it helps to clean up soft reference caches
 		// early rather than waiting for memory limits to be reached
 		ResolvableType.clearCache();
 		cleanCachedIntrospectionResultsCache();
 		ReflectionUtils.clearCache();
 		clearAnnotationUtilsCache();
-		if (!JavaVersion.getJavaVersion().isEqualOrNewerThan(JavaVersion.NINE)) {
-			clear("com.sun.naming.internal.ResourceManager", "propertiesCache");
-		}
 	}
 
-	private void cleanCachedIntrospectionResultsCache() throws Exception {
+	private void cleanCachedIntrospectionResultsCache() {
 		clear(CachedIntrospectionResults.class, "acceptedClassLoaders");
 		clear(CachedIntrospectionResults.class, "strongClassCache");
 		clear(CachedIntrospectionResults.class, "softClassCache");
 	}
 
-	private void clearAnnotationUtilsCache() throws Exception {
+	private void clearAnnotationUtilsCache() {
 		try {
 			AnnotationUtils.clearCache();
 		}
@@ -354,18 +350,7 @@ public class Restarter {
 		}
 	}
 
-	private void clear(String className, String fieldName) {
-		try {
-			clear(Class.forName(className), fieldName);
-		}
-		catch (Exception ex) {
-			if (this.logger.isDebugEnabled()) {
-				this.logger.debug("Unable to clear field " + className + " " + fieldName, ex);
-			}
-		}
-	}
-
-	private void clear(Class<?> type, String fieldName) throws Exception {
+	private void clear(Class<?> type, String fieldName) {
 		try {
 			Field field = type.getDeclaredField(fieldName);
 			field.setAccessible(true);
@@ -423,11 +408,11 @@ public class Restarter {
 	}
 
 	void prepare(ConfigurableApplicationContext applicationContext) {
-		if (applicationContext != null && applicationContext.getParent() != null) {
+		if (!this.enabled || (applicationContext != null && applicationContext.getParent() != null)) {
 			return;
 		}
-		if (applicationContext instanceof GenericApplicationContext) {
-			prepare((GenericApplicationContext) applicationContext);
+		if (applicationContext instanceof GenericApplicationContext genericContext) {
+			prepare(genericContext);
 		}
 		this.rootContexts.add(applicationContext);
 	}
@@ -455,18 +440,11 @@ public class Restarter {
 	}
 
 	public Object getOrAddAttribute(String name, final ObjectFactory<?> objectFactory) {
-		synchronized (this.attributes) {
-			if (!this.attributes.containsKey(name)) {
-				this.attributes.put(name, objectFactory.getObject());
-			}
-			return this.attributes.get(name);
-		}
+		return this.attributes.computeIfAbsent(name, (ignore) -> objectFactory.getObject());
 	}
 
 	public Object removeAttribute(String name) {
-		synchronized (this.attributes) {
-			return this.attributes.remove(name);
-		}
+		return this.attributes.remove(name);
 	}
 
 	/**

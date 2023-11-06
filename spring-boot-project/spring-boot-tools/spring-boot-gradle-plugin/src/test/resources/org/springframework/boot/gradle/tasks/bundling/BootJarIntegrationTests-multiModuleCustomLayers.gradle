@@ -7,10 +7,15 @@ subprojects {
 	apply plugin: 'java'
 	group = 'org.example.projects'
 	version = '1.2.3'
+	if (it.name == 'bravo') {
+		dependencies {
+			implementation(project(':charlie'))
+		}
+	}
 }
 
 bootJar {
-	mainClassName = 'com.example.Application'
+	mainClass = 'com.example.Application'
 	layered {
 		application {
 			intoLayer("static") {
@@ -19,11 +24,12 @@ bootJar {
 			intoLayer("app")
 		}
 		dependencies {
-			intoLayer("subproject-dependencies") {
-				include "org.example.projects:*"
-			}
 			intoLayer("snapshot-dependencies") {
 				include "*:*:*SNAPSHOT"
+				excludeProjectDependencies()
+			}
+			intoLayer("subproject-dependencies") {
+				includeProjectDependencies()
 			}
 			intoLayer("commons-dependencies") {
 				include "org.apache.commons:*" 

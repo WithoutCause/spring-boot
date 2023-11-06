@@ -11,10 +11,14 @@
 		actual jars). Run with '$ java -jar target/*.jar'.
 	</description>
 
-	<property name="lib.dir" location="${basedir}/target/lib" />
+	<property name="lib.dir" location="${basedir}/build/ant/lib" />
 	<property name="start-class" value="smoketest.ant.SampleAntApplication" />
 
-	<target name="resolve" description="--> retrieve dependencies with ivy">
+	<target name="clean-ivy-cache">
+		<ivy:cleancache />
+	</target>
+
+	<target name="resolve" depends="clean-ivy-cache" description="--> retrieve dependencies with ivy">
 		<ivy:retrieve pattern="${lib.dir}/[conf]/[artifact]-[type]-[revision].[ext]" />
 	</target>
 
@@ -34,15 +38,18 @@
 
 	<target name="clean" description="cleans all created files/dirs">
 		<delete dir="target" />
+		<delete dir="${lib.dir}" />
 	</target>
 
 	<target name="build" depends="compile">
-		<spring-boot:exejar destfile="build/ant/libs/${ant.project.name}-${ant-spring-boot.version}.jar" classes="build/ant/classes">
+		<delete file="build/ant/libs/${ant.project.name}.jar"/>
+		<spring-boot:exejar destfile="build/ant/libs/${ant.project.name}.jar" classes="build/ant/classes">
 			<spring-boot:lib>
 				<fileset dir="${lib.dir}/runtime" />
 			</spring-boot:lib>
 		</spring-boot:exejar>
 	</target>
+
 	<!-- Manual equivalent of the build target -->
 	<target name="manual" depends="compile">
 		<jar destfile="target/${ant.project.name}-${ant-spring-boot.version}.jar" compress="false">
@@ -58,9 +65,9 @@
 				<fileset dir="${lib.dir}/runtime" />
 				<globmapper from="*" to="BOOT-INF/lib/*"/>
 			</mappedresources>
-			<zipfileset src="${lib.dir}/loader/spring-boot-loader-jar-${ant-spring-boot.version}.jar" />
+			<zipfileset src="${lib.dir}/loader/spring-boot-loader-classic-jar-${ant-spring-boot.version}.jar" />
 			<manifest>
-				<attribute name="Main-Class" value="org.springframework.boot.loader.JarLauncher" />
+				<attribute name="Main-Class" value="org.springframework.boot.loader.launch.JarLauncher" />
 				<attribute name="Start-Class" value="${start-class}" />
 			</manifest>
 		</jar>

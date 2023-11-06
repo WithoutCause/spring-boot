@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,8 @@
 
 package org.springframework.boot.web.embedded.jetty;
 
-import java.io.IOException;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
+import org.eclipse.jetty.ee10.servlet.ErrorPageErrorHandler;
 import org.eclipse.jetty.http.HttpMethod;
-import org.eclipse.jetty.server.Request;
-import org.eclipse.jetty.servlet.ErrorPageErrorHandler;
 
 /**
  * Variation of Jetty's {@link ErrorPageErrorHandler} that supports all {@link HttpMethod
@@ -40,13 +34,6 @@ class JettyEmbeddedErrorHandler extends ErrorPageErrorHandler {
 	@Override
 	public boolean errorPageForMethod(String method) {
 		return true;
-	}
-
-	@Override
-	public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
-			throws IOException {
-		baseRequest.setMethod("GET");
-		super.doError(target, baseRequest, request, response);
 	}
 
 }

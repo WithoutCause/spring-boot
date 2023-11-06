@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,8 +64,10 @@ public class ExtractVersionConstraints extends DefaultTask {
 	}
 
 	public void enforcedPlatform(String projectPath) {
-		this.configuration.getDependencies().add(getProject().getDependencies().enforcedPlatform(
-				getProject().getDependencies().project(Collections.singletonMap("path", projectPath))));
+		this.configuration.getDependencies()
+			.add(getProject().getDependencies()
+				.enforcedPlatform(
+						getProject().getDependencies().project(Collections.singletonMap("path", projectPath))));
 		this.projectPaths.add(projectPath);
 	}
 
@@ -89,8 +91,10 @@ public class ExtractVersionConstraints extends DefaultTask {
 		this.configuration.resolve();
 		for (String projectPath : this.projectPaths) {
 			extractVersionProperties(projectPath);
-			for (DependencyConstraint constraint : getProject().project(projectPath).getConfigurations()
-					.getByName("apiElements").getAllDependencyConstraints()) {
+			for (DependencyConstraint constraint : getProject().project(projectPath)
+				.getConfigurations()
+				.getByName("apiElements")
+				.getAllDependencyConstraints()) {
 				this.versionConstraints.put(constraint.getGroup() + ":" + constraint.getName(),
 						constraint.getVersionConstraint().toString());
 				this.constrainedVersions.add(new ConstrainedVersion(constraint.getGroup(), constraint.getName(),
@@ -103,7 +107,10 @@ public class ExtractVersionConstraints extends DefaultTask {
 		Object bom = getProject().project(projectPath).getExtensions().getByName("bom");
 		BomExtension bomExtension = (BomExtension) bom;
 		for (Library lib : bomExtension.getLibraries()) {
-			this.versionProperties.add(new VersionProperty(lib.getName(), lib.getVersionProperty()));
+			String versionProperty = lib.getVersionProperty();
+			if (versionProperty != null) {
+				this.versionProperties.add(new VersionProperty(lib.getName(), versionProperty));
+			}
 		}
 	}
 

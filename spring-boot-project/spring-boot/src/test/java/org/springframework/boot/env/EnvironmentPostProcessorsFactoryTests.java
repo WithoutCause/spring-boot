@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,10 @@ import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
 
+import org.springframework.boot.DefaultBootstrapContext;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.logging.DeferredLogFactory;
+import org.springframework.core.OverridingClassLoader;
 import org.springframework.core.env.ConfigurableEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,18 +38,22 @@ class EnvironmentPostProcessorsFactoryTests {
 
 	private final DeferredLogFactory logFactory = Supplier::get;
 
+	private final DefaultBootstrapContext bootstrapContext = new DefaultBootstrapContext();
+
 	@Test
 	void fromSpringFactoriesReturnsFactory() {
 		EnvironmentPostProcessorsFactory factory = EnvironmentPostProcessorsFactory.fromSpringFactories(null);
-		List<EnvironmentPostProcessor> processors = factory.getEnvironmentPostProcessors(this.logFactory);
+		List<EnvironmentPostProcessor> processors = factory.getEnvironmentPostProcessors(this.logFactory,
+				this.bootstrapContext);
 		assertThat(processors).hasSizeGreaterThan(1);
 	}
 
 	@Test
 	void ofClassesReturnsFactory() {
 		EnvironmentPostProcessorsFactory factory = EnvironmentPostProcessorsFactory
-				.of(TestEnvironmentPostProcessor.class);
-		List<EnvironmentPostProcessor> processors = factory.getEnvironmentPostProcessors(this.logFactory);
+			.of(TestEnvironmentPostProcessor.class);
+		List<EnvironmentPostProcessor> processors = factory.getEnvironmentPostProcessors(this.logFactory,
+				this.bootstrapContext);
 		assertThat(processors).hasSize(1);
 		assertThat(processors.get(0)).isInstanceOf(TestEnvironmentPostProcessor.class);
 	}
@@ -55,19 +61,30 @@ class EnvironmentPostProcessorsFactoryTests {
 	@Test
 	void ofClassNamesReturnsFactory() {
 		EnvironmentPostProcessorsFactory factory = EnvironmentPostProcessorsFactory
-				.of(TestEnvironmentPostProcessor.class.getName());
-		List<EnvironmentPostProcessor> processors = factory.getEnvironmentPostProcessors(this.logFactory);
+			.of(TestEnvironmentPostProcessor.class.getName());
+		List<EnvironmentPostProcessor> processors = factory.getEnvironmentPostProcessors(this.logFactory,
+				this.bootstrapContext);
 		assertThat(processors).hasSize(1);
 		assertThat(processors.get(0)).isInstanceOf(TestEnvironmentPostProcessor.class);
 	}
 
 	@Test
-	void singletonReturnsFactory() {
-		EnvironmentPostProcessorsFactory factory = EnvironmentPostProcessorsFactory
-				.singleton(TestEnvironmentPostProcessor::new);
-		List<EnvironmentPostProcessor> processors = factory.getEnvironmentPostProcessors(this.logFactory);
+	void ofClassNamesWithClassLoaderReturnsFactory() {
+		OverridingClassLoader classLoader = new OverridingClassLoader(getClass().getClassLoader()) {
+
+			@Override
+			protected boolean isEligibleForOverriding(String className) {
+				return super.isEligibleForOverriding(className)
+						&& className.equals(TestEnvironmentPostProcessor.class.getName());
+			}
+
+		};
+		EnvironmentPostProcessorsFactory factory = EnvironmentPostProcessorsFactory.of(classLoader,
+				TestEnvironmentPostProcessor.class.getName());
+		List<EnvironmentPostProcessor> processors = factory.getEnvironmentPostProcessors(this.logFactory,
+				this.bootstrapContext);
 		assertThat(processors).hasSize(1);
-		assertThat(processors.get(0)).isInstanceOf(TestEnvironmentPostProcessor.class);
+		assertThat(processors.get(0).getClass().getClassLoader()).isSameAs(classLoader);
 	}
 
 	static class TestEnvironmentPostProcessor implements EnvironmentPostProcessor {

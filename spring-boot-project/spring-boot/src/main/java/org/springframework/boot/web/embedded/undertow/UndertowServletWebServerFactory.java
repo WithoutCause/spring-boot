@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EventListener;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -33,11 +34,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-import javax.servlet.ServletContainerInitializer;
-import javax.servlet.ServletContext;
-import javax.servlet.ServletException;
-
 import io.undertow.Undertow.Builder;
+import io.undertow.server.HttpHandler;
+import io.undertow.server.HttpServerExchange;
+import io.undertow.server.handlers.Cookie;
 import io.undertow.server.handlers.resource.FileResourceManager;
 import io.undertow.server.handlers.resource.Resource;
 import io.undertow.server.handlers.resource.ResourceChangeListener;
@@ -45,24 +45,33 @@ import io.undertow.server.handlers.resource.ResourceManager;
 import io.undertow.server.handlers.resource.URLResource;
 import io.undertow.server.session.SessionManager;
 import io.undertow.servlet.Servlets;
+import io.undertow.servlet.api.Deployment;
 import io.undertow.servlet.api.DeploymentInfo;
 import io.undertow.servlet.api.DeploymentManager;
+import io.undertow.servlet.api.ListenerInfo;
 import io.undertow.servlet.api.MimeMapping;
 import io.undertow.servlet.api.ServletContainerInitializerInfo;
 import io.undertow.servlet.api.ServletStackTraces;
 import io.undertow.servlet.core.DeploymentImpl;
 import io.undertow.servlet.handlers.DefaultServlet;
 import io.undertow.servlet.util.ImmediateInstanceFactory;
+import jakarta.servlet.ServletContainerInitializer;
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletException;
 
+import org.springframework.boot.context.properties.PropertyMapper;
+import org.springframework.boot.web.server.Cookie.SameSite;
 import org.springframework.boot.web.server.ErrorPage;
 import org.springframework.boot.web.server.MimeMappings.Mapping;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.web.servlet.server.AbstractServletWebServerFactory;
+import org.springframework.boot.web.servlet.server.CookieSameSiteSupplier;
 import org.springframework.boot.web.servlet.server.ServletWebServerFactory;
 import org.springframework.context.ResourceLoaderAware;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
 
 /**
  * {@link ServletWebServerFactory} that can be used to create
@@ -85,13 +94,15 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 
 	private static final Set<Class<?>> NO_CLASSES = Collections.emptySet();
 
-	private UndertowWebServerFactoryDelegate delegate = new UndertowWebServerFactoryDelegate();
+	private final UndertowWebServerFactoryDelegate delegate = new UndertowWebServerFactoryDelegate();
 
 	private Set<UndertowDeploymentInfoCustomizer> deploymentInfoCustomizers = new LinkedHashSet<>();
 
 	private ResourceLoader resourceLoader;
 
-	private boolean eagerInitFilters = true;
+	private boolean eagerFilterInit = true;
+
+	private boolean preservePathOnForward = false;
 
 	/**
 	 * Create a new {@link UndertowServletWebServerFactory} instance.
@@ -243,27 +254,47 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 	}
 
 	/**
-	 * Return if filters should be initialized eagerly.
-	 * @return {@code true} if filters are initialized eagerly, otherwise {@code false}.
-	 * @since 2.0.0
+	 * Return if filters should be eagerly initialized.
+	 * @return {@code true} if filters are eagerly initialized, otherwise {@code false}.
+	 * @since 2.4.0
 	 */
-	public boolean isEagerInitFilters() {
-		return this.eagerInitFilters;
+	public boolean isEagerFilterInit() {
+		return this.eagerFilterInit;
 	}
 
 	/**
-	 * Set whether filters should be initialized eagerly.
-	 * @param eagerInitFilters {@code true} if filters are initialized eagerly, otherwise
+	 * Set whether filters should be eagerly initialized.
+	 * @param eagerFilterInit {@code true} if filters are eagerly initialized, otherwise
 	 * {@code false}.
-	 * @since 2.0.0
+	 * @since 2.4.0
 	 */
-	public void setEagerInitFilters(boolean eagerInitFilters) {
-		this.eagerInitFilters = eagerInitFilters;
+	public void setEagerFilterInit(boolean eagerFilterInit) {
+		this.eagerFilterInit = eagerFilterInit;
+	}
+
+	/**
+	 * Return whether the request path should be preserved on forward.
+	 * @return {@code true} if the path should be preserved when a request is forwarded,
+	 * otherwise {@code false}.
+	 * @since 2.4.0
+	 */
+	public boolean isPreservePathOnForward() {
+		return this.preservePathOnForward;
+	}
+
+	/**
+	 * Set whether the request path should be preserved on forward.
+	 * @param preservePathOnForward {@code true} if the path should be preserved when a
+	 * request is forwarded, otherwise {@code false}.
+	 * @since 2.4.0
+	 */
+	public void setPreservePathOnForward(boolean preservePathOnForward) {
+		this.preservePathOnForward = preservePathOnForward;
 	}
 
 	@Override
 	public WebServer getWebServer(ServletContextInitializer... initializers) {
-		Builder builder = this.delegate.createBuilder(this);
+		Builder builder = this.delegate.createBuilder(this, this::getSslBundle);
 		DeploymentManager manager = createManager(initializers);
 		return getUndertowWebServer(builder, manager, getPort());
 	}
@@ -282,8 +313,10 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 		deployment.setServletStackTraces(ServletStackTraces.NONE);
 		deployment.setResourceManager(getDocumentRootResourceManager());
 		deployment.setTempDir(createTempDir("undertow"));
-		deployment.setEagerFilterInit(this.eagerInitFilters);
+		deployment.setEagerFilterInit(this.eagerFilterInit);
+		deployment.setPreservePathOnForward(this.preservePathOnForward);
 		configureMimeMappings(deployment);
+		configureWebListeners(deployment);
 		for (UndertowDeploymentInfoCustomizer customizer : this.deploymentInfoCustomizers) {
 			customizer.customize(deployment);
 		}
@@ -294,8 +327,8 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 		addLocaleMappings(deployment);
 		DeploymentManager manager = Servlets.newContainer().addDeployment(deployment);
 		manager.deploy();
-		if (manager.getDeployment() instanceof DeploymentImpl) {
-			removeSuperfluousMimeMappings((DeploymentImpl) manager.getDeployment(), deployment);
+		if (manager.getDeployment() instanceof DeploymentImpl managerDeployment) {
+			removeSuperfluousMimeMappings(managerDeployment, deployment);
 		}
 		SessionManager sessionManager = manager.getDeployment().getSessionManager();
 		Duration timeoutDuration = getSession().getTimeout();
@@ -304,13 +337,29 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 		return manager;
 	}
 
+	private void configureWebListeners(DeploymentInfo deployment) {
+		for (String className : getWebListenerClassNames()) {
+			try {
+				deployment.addListener(new ListenerInfo(loadWebListenerClass(className)));
+			}
+			catch (ClassNotFoundException ex) {
+				throw new IllegalStateException("Failed to load web listener class '" + className + "'", ex);
+			}
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private Class<? extends EventListener> loadWebListenerClass(String className) throws ClassNotFoundException {
+		return (Class<? extends EventListener>) getServletClassLoader().loadClass(className);
+	}
+
 	private boolean isZeroOrLess(Duration timeoutDuration) {
 		return timeoutDuration == null || timeoutDuration.isZero() || timeoutDuration.isNegative();
 	}
 
 	private void addLocaleMappings(DeploymentInfo deployment) {
-		getLocaleCharsetMappings().forEach(
-				(locale, charset) -> deployment.addLocaleCharsetMapping(locale.toString(), charset.toString()));
+		getLocaleCharsetMappings()
+			.forEach((locale, charset) -> deployment.addLocaleCharsetMapping(locale.toString(), charset.toString()));
 	}
 
 	private void registerServletContainerInitializerToDriveServletContextInitializers(DeploymentInfo deployment,
@@ -373,9 +422,9 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 		}
 	}
 
-	private void configureErrorPages(DeploymentInfo servletBuilder) {
+	private void configureErrorPages(DeploymentInfo deployment) {
 		for (ErrorPage errorPage : getErrorPages()) {
-			servletBuilder.addErrorPage(getUndertowErrorPage(errorPage));
+			deployment.addErrorPage(getUndertowErrorPage(errorPage));
 		}
 	}
 
@@ -389,9 +438,9 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 		return new io.undertow.servlet.api.ErrorPage(errorPage.getPath());
 	}
 
-	private void configureMimeMappings(DeploymentInfo servletBuilder) {
+	private void configureMimeMappings(DeploymentInfo deployment) {
 		for (Mapping mimeMapping : getMimeMappings()) {
-			servletBuilder.addMimeMapping(new MimeMapping(mimeMapping.getExtension(), mimeMapping.getMimeType()));
+			deployment.addMimeMapping(new MimeMapping(mimeMapping.getExtension(), mimeMapping.getMimeType()));
 		}
 	}
 
@@ -416,9 +465,28 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 	 * @return a new {@link UndertowServletWebServer} instance
 	 */
 	protected UndertowServletWebServer getUndertowWebServer(Builder builder, DeploymentManager manager, int port) {
+		List<HttpHandlerFactory> initialHandlerFactories = new ArrayList<>();
+		initialHandlerFactories.add(new DeploymentManagerHttpHandlerFactory(manager));
+		HttpHandlerFactory cooHandlerFactory = getCookieHandlerFactory(manager.getDeployment());
+		if (cooHandlerFactory != null) {
+			initialHandlerFactories.add(cooHandlerFactory);
+		}
 		List<HttpHandlerFactory> httpHandlerFactories = this.delegate.createHttpHandlerFactories(this,
-				new DeploymentManagerHttpHandlerFactory(manager));
+				initialHandlerFactories.toArray(new HttpHandlerFactory[0]));
 		return new UndertowServletWebServer(builder, httpHandlerFactories, getContextPath(), port >= 0);
+	}
+
+	private HttpHandlerFactory getCookieHandlerFactory(Deployment deployment) {
+		SameSite sessionSameSite = getSession().getCookie().getSameSite();
+		List<CookieSameSiteSupplier> suppliers = new ArrayList<>();
+		if (sessionSameSite != null) {
+			String sessionCookieName = deployment.getServletContext().getSessionCookieConfig().getName();
+			suppliers.add(CookieSameSiteSupplier.of(sessionSameSite).whenHasName(sessionCookieName));
+		}
+		if (!CollectionUtils.isEmpty(getCookieSameSiteSuppliers())) {
+			suppliers.addAll(getCookieSameSiteSuppliers());
+		}
+		return (!suppliers.isEmpty()) ? (next) -> new SuppliedSameSiteCookieHandler(next, suppliers) : null;
 	}
 
 	/**
@@ -537,6 +605,62 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 		@Override
 		public void close() throws IOException {
 			this.delegate.close();
+		}
+
+	}
+
+	/**
+	 * {@link HttpHandler} to apply {@link CookieSameSiteSupplier supplied}
+	 * {@link SameSite} cookie values.
+	 */
+	private static class SuppliedSameSiteCookieHandler implements HttpHandler {
+
+		private final HttpHandler next;
+
+		private final List<CookieSameSiteSupplier> suppliers;
+
+		SuppliedSameSiteCookieHandler(HttpHandler next, List<CookieSameSiteSupplier> suppliers) {
+			this.next = next;
+			this.suppliers = suppliers;
+		}
+
+		@Override
+		public void handleRequest(HttpServerExchange exchange) throws Exception {
+			exchange.addResponseCommitListener(this::beforeCommit);
+			this.next.handleRequest(exchange);
+		}
+
+		private void beforeCommit(HttpServerExchange exchange) {
+			for (Cookie cookie : exchange.responseCookies()) {
+				SameSite sameSite = getSameSite(asServletCookie(cookie));
+				if (sameSite != null) {
+					cookie.setSameSiteMode(sameSite.attributeValue());
+				}
+			}
+		}
+
+		@SuppressWarnings("removal")
+		private jakarta.servlet.http.Cookie asServletCookie(Cookie cookie) {
+			PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+			jakarta.servlet.http.Cookie result = new jakarta.servlet.http.Cookie(cookie.getName(), cookie.getValue());
+			map.from(cookie::getComment).to(result::setComment);
+			map.from(cookie::getDomain).to(result::setDomain);
+			map.from(cookie::getMaxAge).to(result::setMaxAge);
+			map.from(cookie::getPath).to(result::setPath);
+			result.setSecure(cookie.isSecure());
+			result.setVersion(cookie.getVersion());
+			result.setHttpOnly(cookie.isHttpOnly());
+			return result;
+		}
+
+		private SameSite getSameSite(jakarta.servlet.http.Cookie cookie) {
+			for (CookieSameSiteSupplier supplier : this.suppliers) {
+				SameSite sameSite = supplier.getSameSite(cookie);
+				if (sameSite != null) {
+					return sameSite;
+				}
+			}
+			return null;
 		}
 
 	}

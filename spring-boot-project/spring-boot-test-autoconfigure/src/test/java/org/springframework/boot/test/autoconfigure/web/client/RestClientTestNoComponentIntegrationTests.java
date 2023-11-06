@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,18 +50,18 @@ class RestClientTestNoComponentIntegrationTests {
 	@Test
 	void exampleRestClientIsNotInjected() {
 		assertThatExceptionOfType(NoSuchBeanDefinitionException.class)
-				.isThrownBy(() -> this.applicationContext.getBean(ExampleRestClient.class));
+			.isThrownBy(() -> this.applicationContext.getBean(ExampleRestTemplateService.class));
 	}
 
 	@Test
 	void examplePropertiesIsNotInjected() {
 		assertThatExceptionOfType(NoSuchBeanDefinitionException.class)
-				.isThrownBy(() -> this.applicationContext.getBean(ExampleProperties.class));
+			.isThrownBy(() -> this.applicationContext.getBean(ExampleProperties.class));
 	}
 
 	@Test
 	void manuallyCreateBean() {
-		ExampleRestClient client = new ExampleRestClient(this.restTemplateBuilder);
+		ExampleRestTemplateService client = new ExampleRestTemplateService(this.restTemplateBuilder);
 		this.server.expect(requestTo("/test")).andRespond(withSuccess("hello", MediaType.TEXT_HTML));
 		assertThat(client.test()).isEqualTo("hello");
 	}

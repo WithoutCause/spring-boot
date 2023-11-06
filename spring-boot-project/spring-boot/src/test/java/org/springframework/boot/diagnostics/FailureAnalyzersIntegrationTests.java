@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
 
 package org.springframework.boot.diagnostics;
 
-import javax.annotation.PostConstruct;
-
+import jakarta.annotation.PostConstruct;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -29,7 +28,7 @@ import org.springframework.boot.web.server.PortInUseException;
 import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatException;
 
 /**
  * Integration tests for {@link FailureAnalyzers}.
@@ -41,8 +40,8 @@ class FailureAnalyzersIntegrationTests {
 
 	@Test
 	void analysisIsPerformed(CapturedOutput output) {
-		assertThatExceptionOfType(Exception.class).isThrownBy(
-				() -> new SpringApplicationBuilder(TestConfiguration.class).web(WebApplicationType.NONE).run());
+		assertThatException()
+			.isThrownBy(() -> new SpringApplicationBuilder(TestConfiguration.class).web(WebApplicationType.NONE).run());
 		assertThat(output).contains("APPLICATION FAILED TO START");
 	}
 

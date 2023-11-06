@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,15 +23,16 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Supplier;
 
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.GenericBeanDefinition;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ImportBeanDefinitionRegistrar;
 import org.springframework.core.annotation.AnnotationAttributes;
+import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
@@ -110,7 +111,7 @@ public class EntityScanPackages {
 		Assert.notNull(packageNames, "PackageNames must not be null");
 		if (registry.containsBeanDefinition(BEAN)) {
 			EntityScanPackagesBeanDefinition beanDefinition = (EntityScanPackagesBeanDefinition) registry
-					.getBeanDefinition(BEAN);
+				.getBeanDefinition(BEAN);
 			beanDefinition.addPackageNames(packageNames);
 		}
 		else {
@@ -124,6 +125,12 @@ public class EntityScanPackages {
 	 */
 	static class Registrar implements ImportBeanDefinitionRegistrar {
 
+		private final Environment environment;
+
+		Registrar(Environment environment) {
+			this.environment = environment;
+		}
+
 		@Override
 		public void registerBeanDefinitions(AnnotationMetadata metadata, BeanDefinitionRegistry registry) {
 			register(registry, getPackagesToScan(metadata));
@@ -131,16 +138,20 @@ public class EntityScanPackages {
 
 		private Set<String> getPackagesToScan(AnnotationMetadata metadata) {
 			AnnotationAttributes attributes = AnnotationAttributes
-					.fromMap(metadata.getAnnotationAttributes(EntityScan.class.getName()));
-			String[] basePackages = attributes.getStringArray("basePackages");
-			Class<?>[] basePackageClasses = attributes.getClassArray("basePackageClasses");
-			Set<String> packagesToScan = new LinkedHashSet<>(Arrays.asList(basePackages));
-			for (Class<?> basePackageClass : basePackageClasses) {
-				packagesToScan.add(ClassUtils.getPackageName(basePackageClass));
+				.fromMap(metadata.getAnnotationAttributes(EntityScan.class.getName()));
+			Set<String> packagesToScan = new LinkedHashSet<>();
+			for (String basePackage : attributes.getStringArray("basePackages")) {
+				String[] tokenized = StringUtils.tokenizeToStringArray(
+						this.environment.resolvePlaceholders(basePackage),
+						ConfigurableApplicationContext.CONFIG_LOCATION_DELIMITERS);
+				Collections.addAll(packagesToScan, tokenized);
+			}
+			for (Class<?> basePackageClass : attributes.getClassArray("basePackageClasses")) {
+				packagesToScan.add(this.environment.resolvePlaceholders(ClassUtils.getPackageName(basePackageClass)));
 			}
 			if (packagesToScan.isEmpty()) {
 				String packageName = ClassUtils.getPackageName(metadata.getClassName());
-				Assert.state(!StringUtils.isEmpty(packageName), "@EntityScan cannot be used with the default package");
+				Assert.state(StringUtils.hasLength(packageName), "@EntityScan cannot be used with the default package");
 				return Collections.singleton(packageName);
 			}
 			return packagesToScan;
@@ -150,7 +161,7 @@ public class EntityScanPackages {
 
 	static class EntityScanPackagesBeanDefinition extends GenericBeanDefinition {
 
-		private Set<String> packageNames = new LinkedHashSet<>();
+		private final Set<String> packageNames = new LinkedHashSet<>();
 
 		EntityScanPackagesBeanDefinition(Collection<String> packageNames) {
 			setBeanClass(EntityScanPackages.class);
@@ -158,13 +169,9 @@ public class EntityScanPackages {
 			addPackageNames(packageNames);
 		}
 
-		@Override
-		public Supplier<?> getInstanceSupplier() {
-			return () -> new EntityScanPackages(StringUtils.toStringArray(this.packageNames));
-		}
-
 		private void addPackageNames(Collection<String> additionalPackageNames) {
 			this.packageNames.addAll(additionalPackageNames);
+			getConstructorArgumentValues().addIndexedArgumentValue(0, StringUtils.toStringArray(this.packageNames));
 		}
 
 	}

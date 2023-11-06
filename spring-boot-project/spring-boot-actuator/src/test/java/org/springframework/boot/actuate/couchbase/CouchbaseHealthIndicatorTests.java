@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import java.util.Optional;
 
 import com.couchbase.client.core.diagnostics.DiagnosticsResult;
 import com.couchbase.client.core.diagnostics.EndpointDiagnostics;
+import com.couchbase.client.core.endpoint.CircuitBreaker;
 import com.couchbase.client.core.endpoint.EndpointState;
 import com.couchbase.client.core.service.ServiceType;
 import com.couchbase.client.java.Cluster;
@@ -34,8 +35,8 @@ import org.springframework.boot.actuate.health.Status;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 /**
  * Tests for {@link CouchbaseHealthIndicator}
@@ -51,8 +52,9 @@ class CouchbaseHealthIndicatorTests {
 		Cluster cluster = mock(Cluster.class);
 		CouchbaseHealthIndicator healthIndicator = new CouchbaseHealthIndicator(cluster);
 		Map<ServiceType, List<EndpointDiagnostics>> endpoints = Collections.singletonMap(ServiceType.KV,
-				Collections.singletonList(new EndpointDiagnostics(ServiceType.KV, EndpointState.CONNECTED, "127.0.0.1",
-						"127.0.0.1", Optional.empty(), Optional.of(1234L), Optional.of("endpoint-1"))));
+				Collections.singletonList(new EndpointDiagnostics(ServiceType.KV, EndpointState.CONNECTED,
+						CircuitBreaker.State.DISABLED, "127.0.0.1", "127.0.0.1", Optional.empty(), Optional.of(1234L),
+						Optional.of("endpoint-1"), Optional.empty())));
 
 		DiagnosticsResult diagnostics = new DiagnosticsResult(endpoints, "test-sdk", "test-id");
 		given(cluster.diagnostics()).willReturn(diagnostics);
@@ -61,7 +63,7 @@ class CouchbaseHealthIndicatorTests {
 		assertThat(health.getDetails()).containsEntry("sdk", "test-sdk");
 		assertThat(health.getDetails()).containsKey("endpoints");
 		assertThat((List<Map<String, Object>>) health.getDetails().get("endpoints")).hasSize(1);
-		verify(cluster).diagnostics();
+		then(cluster).should().diagnostics();
 	}
 
 	@Test
@@ -71,10 +73,12 @@ class CouchbaseHealthIndicatorTests {
 		CouchbaseHealthIndicator healthIndicator = new CouchbaseHealthIndicator(cluster);
 		Map<ServiceType, List<EndpointDiagnostics>> endpoints = Collections.singletonMap(ServiceType.KV,
 				Arrays.asList(
-						new EndpointDiagnostics(ServiceType.KV, EndpointState.CONNECTED, "127.0.0.1", "127.0.0.1",
-								Optional.empty(), Optional.of(1234L), Optional.of("endpoint-1")),
-						new EndpointDiagnostics(ServiceType.KV, EndpointState.CONNECTING, "127.0.0.1", "127.0.0.1",
-								Optional.empty(), Optional.of(1234L), Optional.of("endpoint-2"))));
+						new EndpointDiagnostics(ServiceType.KV, EndpointState.CONNECTED, CircuitBreaker.State.DISABLED,
+								"127.0.0.1", "127.0.0.1", Optional.empty(), Optional.of(1234L),
+								Optional.of("endpoint-1"), Optional.empty()),
+						new EndpointDiagnostics(ServiceType.KV, EndpointState.CONNECTING, CircuitBreaker.State.DISABLED,
+								"127.0.0.1", "127.0.0.1", Optional.empty(), Optional.of(1234L),
+								Optional.of("endpoint-2"), Optional.empty())));
 		DiagnosticsResult diagnostics = new DiagnosticsResult(endpoints, "test-sdk", "test-id");
 		given(cluster.diagnostics()).willReturn(diagnostics);
 		Health health = healthIndicator.health();
@@ -82,7 +86,7 @@ class CouchbaseHealthIndicatorTests {
 		assertThat(health.getDetails()).containsEntry("sdk", "test-sdk");
 		assertThat(health.getDetails()).containsKey("endpoints");
 		assertThat((List<Map<String, Object>>) health.getDetails().get("endpoints")).hasSize(2);
-		verify(cluster).diagnostics();
+		then(cluster).should().diagnostics();
 	}
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,6 +92,30 @@ class IncludeExcludeGroupMemberPredicateTests {
 	void testWhenExtraWhitespaceAcceptsTrimmedVersion() {
 		Predicate<String> predicate = include("  myEndpoint  ").exclude();
 		assertThat(predicate).accepts("myEndpoint").rejects("d");
+	}
+
+	@Test
+	void testWhenSpecifiedIncludeWithSlash() {
+		Predicate<String> predicate = include("test/a").exclude();
+		assertThat(predicate).accepts("test/a").rejects("test").rejects("test/b");
+	}
+
+	@Test
+	void specifiedIncludeShouldIncludeNested() {
+		Predicate<String> predicate = include("test").exclude();
+		assertThat(predicate).accepts("test/a/d").accepts("test/b").rejects("foo");
+	}
+
+	@Test
+	void specifiedIncludeShouldNotIncludeExcludedNested() {
+		Predicate<String> predicate = include("test").exclude("test/b");
+		assertThat(predicate).accepts("test/a").rejects("test/b").rejects("foo");
+	}
+
+	@Test // gh-29251
+	void specifiedExcludeShouldExcludeNestedChildren() {
+		Predicate<String> predicate = include("*").exclude("test");
+		assertThat(predicate).rejects("test").rejects("test/a").rejects("test/a").accepts("other");
 	}
 
 	private Builder include(String... include) {

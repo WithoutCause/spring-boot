@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,17 @@
 
 package org.springframework.boot.autoconfigure.amqp;
 
+import com.rabbitmq.client.ConnectionFactory;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.amqp.rabbit.config.DirectRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.listener.DirectMessageListenerContainer;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
+import org.springframework.boot.context.properties.source.InvalidConfigurationPropertyValueException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * Tests for {@link RabbitProperties}.
@@ -31,6 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Dave Syer
  * @author Andy Wilkinson
  * @author Stephane Nicoll
+ * @author Rafael Carvalho
+ * @author Scott Frederick
  */
 class RabbitPropertiesTests {
 
@@ -237,7 +242,21 @@ class RabbitPropertiesTests {
 	void customAddresses() {
 		this.properties.setAddresses("user:secret@rabbit1.example.com:1234/alpha,rabbit2.example.com");
 		assertThat(this.properties.getAddresses())
-				.isEqualTo("user:secret@rabbit1.example.com:1234/alpha,rabbit2.example.com");
+			.isEqualTo("user:secret@rabbit1.example.com:1234/alpha,rabbit2.example.com");
+	}
+
+	@Test
+	void ipv6Address() {
+		this.properties.setAddresses("amqp://foo:bar@[aaaa:bbbb:cccc::d]:1234");
+		assertThat(this.properties.determineHost()).isEqualTo("[aaaa:bbbb:cccc::d]");
+		assertThat(this.properties.determinePort()).isEqualTo(1234);
+	}
+
+	@Test
+	void ipv6AddressDefaultPort() {
+		this.properties.setAddresses("amqp://foo:bar@[aaaa:bbbb:cccc::d]");
+		assertThat(this.properties.determineHost()).isEqualTo("[aaaa:bbbb:cccc::d]");
+		assertThat(this.properties.determinePort()).isEqualTo(5672);
 	}
 
 	@Test
@@ -262,6 +281,13 @@ class RabbitPropertiesTests {
 		this.properties.setHost("rabbit.example.com");
 		this.properties.setPort(1234);
 		assertThat(this.properties.determineAddresses()).isEqualTo("rabbit.example.com:1234");
+	}
+
+	@Test
+	void determineAddressesUsesIpv6HostAndPortPropertiesWhenNoAddressesSet() {
+		this.properties.setHost("[::1]");
+		this.properties.setPort(32863);
+		assertThat(this.properties.determineAddresses()).isEqualTo("[::1]:32863");
 	}
 
 	@Test
@@ -297,12 +323,28 @@ class RabbitPropertiesTests {
 	}
 
 	@Test
+	void determineSslEnabledIsTrueWhenBundleIsSetAndNoAddresses() {
+		this.properties.getSsl().setBundle("test");
+		assertThat(this.properties.getSsl().determineEnabled()).isTrue();
+	}
+
+	@Test
+	void propertiesUseConsistentDefaultValues() {
+		ConnectionFactory connectionFactory = new ConnectionFactory();
+		assertThat(connectionFactory).hasFieldOrPropertyWithValue("maxInboundMessageBodySize",
+				(int) this.properties.getMaxInboundMessageBodySize().toBytes());
+	}
+
+	@Test
 	void simpleContainerUseConsistentDefaultValues() {
 		SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
 		SimpleMessageListenerContainer container = factory.createListenerContainer();
 		RabbitProperties.SimpleContainer simple = this.properties.getListener().getSimple();
 		assertThat(simple.isAutoStartup()).isEqualTo(container.isAutoStartup());
 		assertThat(container).hasFieldOrPropertyWithValue("missingQueuesFatal", simple.isMissingQueuesFatal());
+		assertThat(container).hasFieldOrPropertyWithValue("deBatchingEnabled", simple.isDeBatchingEnabled());
+		assertThat(container).hasFieldOrPropertyWithValue("consumerBatchEnabled", simple.isConsumerBatchEnabled());
+		assertThat(container).hasFieldOrPropertyWithValue("forceStop", simple.isForceStop());
 	}
 
 	@Test
@@ -312,6 +354,24 @@ class RabbitPropertiesTests {
 		RabbitProperties.DirectContainer direct = this.properties.getListener().getDirect();
 		assertThat(direct.isAutoStartup()).isEqualTo(container.isAutoStartup());
 		assertThat(container).hasFieldOrPropertyWithValue("missingQueuesFatal", direct.isMissingQueuesFatal());
+		assertThat(container).hasFieldOrPropertyWithValue("deBatchingEnabled", direct.isDeBatchingEnabled());
+		assertThat(container).hasFieldOrPropertyWithValue("forceStop", direct.isForceStop());
+	}
+
+	@Test
+	void determineUsernameWithoutPassword() {
+		this.properties.setAddresses("user@rabbit1.example.com:1234/alpha");
+		assertThat(this.properties.determineUsername()).isEqualTo("user");
+		assertThat(this.properties.determinePassword()).isEqualTo("guest");
+	}
+
+	@Test
+	void hostPropertyMustBeSingleHost() {
+		this.properties.setHost("my-rmq-host.net,my-rmq-host-2.net");
+		assertThat(this.properties.getHost()).isEqualTo("my-rmq-host.net,my-rmq-host-2.net");
+		assertThatExceptionOfType(InvalidConfigurationPropertyValueException.class)
+			.isThrownBy(this.properties::determineAddresses)
+			.withMessageContaining("spring.rabbitmq.host");
 	}
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 package org.springframework.boot.launchscript;
 
+import java.util.List;
 import java.util.regex.Pattern;
 
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -33,12 +33,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Andy Wilkinson
  * @author Ali Shahbour
  * @author Alexey Vinogradov
+ * @author Moritz Halbritter
  */
 @DisabledIfDockerUnavailable
 class SysVinitLaunchScriptIntegrationTests extends AbstractLaunchScriptIntegrationTests {
 
 	SysVinitLaunchScriptIntegrationTests() {
 		super("init.d/");
+	}
+
+	static List<Object[]> parameters() {
+		return filterParameters((file) -> !file.getName().contains("RedHat"));
 	}
 
 	@ParameterizedTest(name = "{0} {1}")
@@ -63,7 +68,7 @@ class SysVinitLaunchScriptIntegrationTests extends AbstractLaunchScriptIntegrati
 		String output = doTest(os, version, "status-when-killed.sh");
 		assertThat(output).contains("Status: 1");
 		assertThat(output)
-				.has(coloredString(AnsiColor.RED, "Not running (process " + extractPid(output) + " not found)"));
+			.has(coloredString(AnsiColor.RED, "Not running (process " + extractPid(output) + " not found)"));
 	}
 
 	@ParameterizedTest(name = "{0} {1}")
@@ -128,16 +133,16 @@ class SysVinitLaunchScriptIntegrationTests extends AbstractLaunchScriptIntegrati
 	@MethodSource("parameters")
 	void launchWithMissingLogFolderGeneratesAWarning(String os, String version) throws Exception {
 		String output = doTest(os, version, "launch-with-missing-log-folder.sh");
-		assertThat(output).has(
-				coloredString(AnsiColor.YELLOW, "LOG_FOLDER /does/not/exist does not exist. Falling back to /tmp"));
+		assertThat(output)
+			.has(coloredString(AnsiColor.YELLOW, "LOG_FOLDER /does/not/exist does not exist. Falling back to /tmp"));
 	}
 
 	@ParameterizedTest(name = "{0} {1}")
 	@MethodSource("parameters")
 	void launchWithMissingPidFolderGeneratesAWarning(String os, String version) throws Exception {
 		String output = doTest(os, version, "launch-with-missing-pid-folder.sh");
-		assertThat(output).has(
-				coloredString(AnsiColor.YELLOW, "PID_FOLDER /does/not/exist does not exist. Falling back to /tmp"));
+		assertThat(output)
+			.has(coloredString(AnsiColor.YELLOW, "PID_FOLDER /does/not/exist does not exist. Falling back to /tmp"));
 	}
 
 	@ParameterizedTest(name = "{0} {1}")
@@ -185,8 +190,6 @@ class SysVinitLaunchScriptIntegrationTests extends AbstractLaunchScriptIntegrati
 	@ParameterizedTest(name = "{0} {1}")
 	@MethodSource("parameters")
 	void launchWithUseOfStartStopDaemonDisabled(String os, String version) throws Exception {
-		// CentOS doesn't have start-stop-daemon
-		Assumptions.assumeFalse(os.equals("CentOS"));
 		doLaunch(os, version, "launch-with-use-of-start-stop-daemon-disabled.sh");
 	}
 

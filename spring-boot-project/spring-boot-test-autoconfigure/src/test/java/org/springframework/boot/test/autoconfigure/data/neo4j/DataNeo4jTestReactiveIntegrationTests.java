@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.springframework.boot.test.autoconfigure.data.neo4j;
 import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
+import org.neo4j.driver.Driver;
 import org.testcontainers.containers.Neo4jContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -27,31 +28,38 @@ import reactor.test.StepVerifier;
 
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.testsupport.testcontainers.DockerImageNames;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.data.neo4j.core.ReactiveDatabaseSelectionProvider;
 import org.springframework.data.neo4j.core.ReactiveNeo4jTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.data.neo4j.core.transaction.ReactiveNeo4jTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
- * Integration tests for the reactive SDN/RX Neo4j test slice.
+ * Integration tests for {@link DataNeo4jTest @DataNeo4jTest} with reactive style.
  *
  * @author Michael J. Simons
- * @since 2.4.0
+ * @author Scott Frederick
+ * @author Moritz Halbritter
+ * @author Andy Wilkinson
+ * @author Phillip Webb
  */
 @DataNeo4jTest
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers(disabledWithoutDocker = true)
 class DataNeo4jTestReactiveIntegrationTests {
 
 	@Container
-	static final Neo4jContainer<?> neo4j = new Neo4jContainer<>("neo4j:4.0").withoutAuthentication()
-			.withStartupTimeout(Duration.ofMinutes(10));
-
-	@DynamicPropertySource
-	static void neo4jProperties(DynamicPropertyRegistry registry) {
-		registry.add("spring.neo4j.uri", neo4j::getBoltUrl);
-	}
+	@ServiceConnection
+	static final Neo4jContainer<?> neo4j = new Neo4jContainer<>(DockerImageNames.neo4j()).withoutAuthentication()
+		.withStartupAttempts(5)
+		.withStartupTimeout(Duration.ofMinutes(10));
 
 	@Autowired
 	private ReactiveNeo4jTemplate neo4jTemplate;
@@ -64,15 +72,33 @@ class DataNeo4jTestReactiveIntegrationTests {
 
 	@Test
 	void testRepository() {
-		Mono.just(new ExampleGraph("Look, new @DataNeo4jTest with reactive!")).flatMap(this.exampleRepository::save)
-				.as(StepVerifier::create).expectNextCount(1).verifyComplete();
-		StepVerifier.create(this.neo4jTemplate.count(ExampleGraph.class)).expectNext(1L).verifyComplete();
+		Mono.just(new ExampleGraph("Look, new @DataNeo4jTest with reactive!"))
+			.flatMap(this.exampleRepository::save)
+			.as(StepVerifier::create)
+			.expectNextCount(1)
+			.expectComplete()
+			.verify(Duration.ofSeconds(30));
+		StepVerifier.create(this.neo4jTemplate.count(ExampleGraph.class))
+			.expectNext(1L)
+			.expectComplete()
+			.verify(Duration.ofSeconds(30));
 	}
 
 	@Test
 	void didNotInjectExampleService() {
 		assertThatExceptionOfType(NoSuchBeanDefinitionException.class)
-				.isThrownBy(() -> this.applicationContext.getBean(ExampleService.class));
+			.isThrownBy(() -> this.applicationContext.getBean(ExampleService.class));
+	}
+
+	@TestConfiguration(proxyBeanMethods = false)
+	static class ReactiveTransactionManagerConfiguration {
+
+		@Bean
+		ReactiveNeo4jTransactionManager reactiveTransactionManager(Driver driver,
+				ReactiveDatabaseSelectionProvider databaseNameProvider) {
+			return new ReactiveNeo4jTransactionManager(driver, databaseNameProvider);
+		}
+
 	}
 
 }

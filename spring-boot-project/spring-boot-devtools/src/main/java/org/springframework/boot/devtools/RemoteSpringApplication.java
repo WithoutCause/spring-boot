@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.context.config.AnsiOutputApplicationListener;
 import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
-import org.springframework.boot.context.logging.ClasspathLoggingApplicationListener;
 import org.springframework.boot.context.logging.LoggingApplicationListener;
 import org.springframework.boot.devtools.remote.client.RemoteClientConfiguration;
 import org.springframework.boot.devtools.restart.RestartInitializer;
@@ -73,9 +72,8 @@ public final class RemoteSpringApplication {
 	private Collection<ApplicationListener<?>> getListeners() {
 		List<ApplicationListener<?>> listeners = new ArrayList<>();
 		listeners.add(new AnsiOutputApplicationListener());
-		listeners.add(new EnvironmentPostProcessorApplicationListener(
-				EnvironmentPostProcessorsFactory.singleton(ConfigDataEnvironmentPostProcessor::new)));
-		listeners.add(new ClasspathLoggingApplicationListener());
+		listeners.add(EnvironmentPostProcessorApplicationListener
+			.with(EnvironmentPostProcessorsFactory.of(ConfigDataEnvironmentPostProcessor.class)));
 		listeners.add(new LoggingApplicationListener());
 		listeners.add(new RemoteUrlPropertyExtractor());
 		return listeners;

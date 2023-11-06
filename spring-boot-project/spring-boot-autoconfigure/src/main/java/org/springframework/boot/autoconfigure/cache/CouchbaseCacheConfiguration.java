@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.util.List;
 
 import com.couchbase.client.java.Cluster;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.cache.CacheProperties.Couchbase;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -38,23 +39,23 @@ import org.springframework.util.ObjectUtils;
  * Couchbase cache configuration.
  *
  * @author Stephane Nicoll
- * @since 1.4.0
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass({ Cluster.class, CouchbaseClientFactory.class, CouchbaseCacheManager.class })
 @ConditionalOnMissingBean(CacheManager.class)
 @ConditionalOnSingleCandidate(CouchbaseClientFactory.class)
 @Conditional(CacheCondition.class)
-public class CouchbaseCacheConfiguration {
+class CouchbaseCacheConfiguration {
 
 	@Bean
-	public CouchbaseCacheManager cacheManager(CacheProperties cacheProperties, CacheManagerCustomizers customizers,
+	CouchbaseCacheManager cacheManager(CacheProperties cacheProperties, CacheManagerCustomizers customizers,
+			ObjectProvider<CouchbaseCacheManagerBuilderCustomizer> couchbaseCacheManagerBuilderCustomizers,
 			CouchbaseClientFactory clientFactory) {
 		List<String> cacheNames = cacheProperties.getCacheNames();
 		CouchbaseCacheManagerBuilder builder = CouchbaseCacheManager.builder(clientFactory);
 		Couchbase couchbase = cacheProperties.getCouchbase();
 		org.springframework.data.couchbase.cache.CouchbaseCacheConfiguration config = org.springframework.data.couchbase.cache.CouchbaseCacheConfiguration
-				.defaultCacheConfig();
+			.defaultCacheConfig();
 		if (couchbase.getExpiration() != null) {
 			config = config.entryExpiry(couchbase.getExpiration());
 		}
@@ -62,6 +63,7 @@ public class CouchbaseCacheConfiguration {
 		if (!ObjectUtils.isEmpty(cacheNames)) {
 			builder.initialCacheNames(new LinkedHashSet<>(cacheNames));
 		}
+		couchbaseCacheManagerBuilderCustomizers.orderedStream().forEach((customizer) -> customizer.customize(builder));
 		CouchbaseCacheManager cacheManager = builder.build();
 		return customizers.customize(cacheManager);
 	}

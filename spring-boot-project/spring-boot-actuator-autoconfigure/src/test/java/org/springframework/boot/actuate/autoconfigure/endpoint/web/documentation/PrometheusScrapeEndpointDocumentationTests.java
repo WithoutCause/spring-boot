@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import io.micrometer.core.instrument.Clock;
 import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.exporter.common.TextFormat;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.boot.actuate.metrics.export.prometheus.PrometheusScrapeEndpoint;
@@ -29,8 +30,9 @@ import org.springframework.context.annotation.Import;
 
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
 import static org.springframework.restdocs.request.RequestDocumentation.parameterWithName;
-import static org.springframework.restdocs.request.RequestDocumentation.requestParameters;
+import static org.springframework.restdocs.request.RequestDocumentation.queryParameters;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -47,13 +49,23 @@ class PrometheusScrapeEndpointDocumentationTests extends MockMvcEndpointDocument
 	}
 
 	@Test
+	void prometheusOpenmetrics() throws Exception {
+		this.mockMvc.perform(get("/actuator/prometheus").accept(TextFormat.CONTENT_TYPE_OPENMETRICS_100))
+			.andExpect(status().isOk())
+			.andExpect(header().string("Content-Type", "application/openmetrics-text;version=1.0.0;charset=utf-8"))
+			.andDo(document("prometheus/openmetrics"));
+	}
+
+	@Test
 	void filteredPrometheus() throws Exception {
 		this.mockMvc
-				.perform(get("/actuator/prometheus").param("includedNames",
-						"jvm_memory_used_bytes,jvm_memory_committed_bytes"))
-				.andExpect(status().isOk())
-				.andDo(document("prometheus/names", requestParameters(parameterWithName("includedNames")
-						.description("Restricts the samples to those that match the names. Optional.").optional())));
+			.perform(get("/actuator/prometheus").param("includedNames",
+					"jvm_memory_used_bytes,jvm_memory_committed_bytes"))
+			.andExpect(status().isOk())
+			.andDo(document("prometheus/names",
+					queryParameters(parameterWithName("includedNames")
+						.description("Restricts the samples to those that match the names. Optional.")
+						.optional())));
 	}
 
 	@Configuration(proxyBeanMethods = false)

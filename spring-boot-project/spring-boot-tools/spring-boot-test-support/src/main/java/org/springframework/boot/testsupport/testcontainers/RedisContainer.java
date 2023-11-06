@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,11 @@ import org.testcontainers.containers.GenericContainer;
  *
  * @author Andy Wilkinson
  * @author Madhura Bhave
- * @since 2.0.0
  */
 public class RedisContainer extends GenericContainer<RedisContainer> {
 
 	public RedisContainer() {
-		super("redis:4.0.6");
+		super(DockerImageNames.redis());
 		addExposedPorts(6379);
 	}
 

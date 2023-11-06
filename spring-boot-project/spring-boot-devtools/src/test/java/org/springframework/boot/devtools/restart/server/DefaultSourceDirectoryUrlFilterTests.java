@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ class DefaultSourceDirectoryUrlFilterTests {
 		COMMON_POSTFIXES = Collections.unmodifiableList(postfixes);
 	}
 
-	private DefaultSourceDirectoryUrlFilter filter = new DefaultSourceDirectoryUrlFilter();
+	private final DefaultSourceDirectoryUrlFilter filter = new DefaultSourceDirectoryUrlFilter();
 
 	@Test
 	void mavenSourceDirectory() throws Exception {
@@ -67,18 +67,6 @@ class DefaultSourceDirectoryUrlFilterTests {
 	@Test
 	void unusualSourceDirectory() throws Exception {
 		doTest("my-module/something/quite/quite/mad/");
-	}
-
-	@Test
-	void skippedProjects() throws Exception {
-		String sourceDirectory = "/Users/me/code/spring-boot-samples/spring-boot-sample-devtools";
-		URL jarUrl = new URL("jar:file:/Users/me/tmp/spring-boot-sample-devtools-1.3.0.BUILD-SNAPSHOT.jar!/");
-		assertThat(this.filter.isMatch(sourceDirectory, jarUrl)).isTrue();
-		URL nestedJarUrl = new URL("jar:file:/Users/me/tmp/spring-boot-sample-devtools-1.3.0.BUILD-SNAPSHOT.jar!/"
-				+ "lib/spring-boot-1.3.0.BUILD-SNAPSHOT.jar!/");
-		assertThat(this.filter.isMatch(sourceDirectory, nestedJarUrl)).isFalse();
-		URL fileUrl = new URL("file:/Users/me/tmp/spring-boot-sample-devtools-1.3.0.BUILD-SNAPSHOT.jar");
-		assertThat(this.filter.isMatch(sourceDirectory, fileUrl)).isTrue();
 	}
 
 	private void doTest(String sourcePostfix) throws MalformedURLException {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import org.springframework.boot.autoconfigure.cache.CacheAutoConfiguration;
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
 import org.springframework.boot.autoconfigure.liquibase.LiquibaseAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.orm.jpa.ExampleComponent;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnectionAutoConfiguration;
 import org.springframework.context.ApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,7 +55,7 @@ class JooqTestIntegrationTests {
 	@Test
 	void testDSLContext() {
 		assertThat(this.dsl.selectCount().from("INFORMATION_SCHEMA.TABLES").fetchOne(0, Integer.class))
-				.isGreaterThan(0);
+			.isGreaterThan(0);
 	}
 
 	@Test
@@ -67,7 +68,7 @@ class JooqTestIntegrationTests {
 	@Test
 	void didNotInjectExampleComponent() {
 		assertThatExceptionOfType(NoSuchBeanDefinitionException.class)
-				.isThrownBy(() -> this.applicationContext.getBean(ExampleComponent.class));
+			.isThrownBy(() -> this.applicationContext.getBean(ExampleComponent.class));
 	}
 
 	@Test
@@ -83,6 +84,11 @@ class JooqTestIntegrationTests {
 	@Test
 	void cacheAutoConfigurationWasImported() {
 		assertThat(this.applicationContext).has(importedAutoConfiguration(CacheAutoConfiguration.class));
+	}
+
+	@Test
+	void serviceConnectionAutoConfigurationWasImported() {
+		assertThat(this.applicationContext).has(importedAutoConfiguration(ServiceConnectionAutoConfiguration.class));
 	}
 
 }

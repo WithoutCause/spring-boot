@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.actuate.autoconfigure.health.HealthContributorAutoConfiguration;
 import org.springframework.boot.actuate.cassandra.CassandraDriverHealthIndicator;
 import org.springframework.boot.actuate.cassandra.CassandraDriverReactiveHealthIndicator;
-import org.springframework.boot.actuate.cassandra.CassandraHealthIndicator;
-import org.springframework.boot.actuate.cassandra.CassandraReactiveHealthIndicator;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -42,52 +40,46 @@ import static org.mockito.Mockito.mock;
 class CassandraReactiveHealthContributorAutoConfigurationTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(CassandraReactiveHealthContributorAutoConfiguration.class,
-					CassandraHealthContributorAutoConfiguration.class, HealthContributorAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(CassandraReactiveHealthContributorAutoConfiguration.class,
+				CassandraHealthContributorAutoConfiguration.class, HealthContributorAutoConfiguration.class));
 
 	@Test
 	void runWithoutCqlSessionOrReactiveCassandraOperationsShouldNotCreateIndicator() {
 		this.contextRunner.run((context) -> assertThat(context).doesNotHaveBean("cassandraHealthContributor")
-				.doesNotHaveBean(CassandraReactiveHealthIndicator.class)
-				.doesNotHaveBean(CassandraDriverReactiveHealthIndicator.class));
+			.doesNotHaveBean(CassandraDriverReactiveHealthIndicator.class));
 	}
 
 	@Test
-	void runWithReactiveCassandraOperationsShouldOnlyCreateReactiveIndicator() {
+	void runWithCqlSessionOnlyShouldCreateDriverIndicator() {
 		this.contextRunner.withBean(CqlSession.class, () -> mock(CqlSession.class))
-				.withBean(ReactiveCassandraOperations.class, () -> mock(ReactiveCassandraOperations.class))
-				.withBean(CassandraOperations.class, () -> mock(CassandraOperations.class))
-				.run((context) -> assertThat(context).hasBean("cassandraHealthContributor")
-						.hasSingleBean(CassandraReactiveHealthIndicator.class)
-						.doesNotHaveBean(CassandraDriverReactiveHealthIndicator.class)
-						.doesNotHaveBean(CassandraHealthIndicator.class)
-						.doesNotHaveBean(CassandraDriverHealthIndicator.class));
+			.run((context) -> assertThat(context).hasBean("cassandraHealthContributor")
+				.hasSingleBean(CassandraDriverReactiveHealthIndicator.class));
 	}
 
 	@Test
-	void runWithCqlSessionShouldCreateDriverIndicator() {
+	void runWithCqlSessionAndReactiveCassandraOperationsShouldCreateDriverIndicator() {
 		this.contextRunner.withBean(CqlSession.class, () -> mock(CqlSession.class))
-				.run((context) -> assertThat(context).hasBean("cassandraHealthContributor")
-						.hasSingleBean(CassandraDriverReactiveHealthIndicator.class)
-						.doesNotHaveBean(CassandraReactiveHealthIndicator.class));
+			.withBean(ReactiveCassandraOperations.class, () -> mock(ReactiveCassandraOperations.class))
+			.withBean(CassandraOperations.class, () -> mock(CassandraOperations.class))
+			.run((context) -> assertThat(context).hasBean("cassandraHealthContributor")
+				.hasSingleBean(CassandraDriverReactiveHealthIndicator.class)
+				.doesNotHaveBean(CassandraDriverHealthIndicator.class));
 	}
 
 	@Test
-	void runWithCqlSessionAndSpringDataAbsentShouldACreateDriverIndicator() {
+	void runWithCqlSessionAndSpringDataAbsentShouldCreateDriverIndicator() {
 		this.contextRunner.withBean(CqlSession.class, () -> mock(CqlSession.class))
-				.withClassLoader(new FilteredClassLoader("org.springframework.data"))
-				.run((context) -> assertThat(context).hasBean("cassandraHealthContributor")
-						.hasSingleBean(CassandraDriverReactiveHealthIndicator.class)
-						.doesNotHaveBean(CassandraReactiveHealthIndicator.class));
+			.withClassLoader(new FilteredClassLoader("org.springframework.data"))
+			.run((context) -> assertThat(context).hasBean("cassandraHealthContributor")
+				.hasSingleBean(CassandraDriverReactiveHealthIndicator.class));
 	}
 
 	@Test
 	void runWhenDisabledShouldNotCreateIndicator() {
 		this.contextRunner.withBean(CqlSession.class, () -> mock(CqlSession.class))
-				.withBean(ReactiveCassandraOperations.class, () -> mock(ReactiveCassandraOperations.class))
-				.withPropertyValues("management.health.cassandra.enabled:false")
-				.run((context) -> assertThat(context).doesNotHaveBean("cassandraHealthContributor")
-						.doesNotHaveBean(CassandraReactiveHealthIndicator.class));
+			.withBean(ReactiveCassandraOperations.class, () -> mock(ReactiveCassandraOperations.class))
+			.withPropertyValues("management.health.cassandra.enabled:false")
+			.run((context) -> assertThat(context).doesNotHaveBean("cassandraHealthContributor"));
 	}
 
 }

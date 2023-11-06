@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,16 +26,17 @@ import org.bson.codecs.Codec;
 import org.bson.codecs.configuration.CodecRegistry;
 import reactor.core.publisher.Mono;
 
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.mongo.MongoConnectionDetails;
+import org.springframework.boot.autoconfigure.mongo.MongoConnectionDetails.GridFs;
 import org.springframework.boot.autoconfigure.mongo.MongoProperties;
 import org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.buffer.DataBufferFactory;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -60,27 +61,36 @@ import org.springframework.util.StringUtils;
  * <p>
  * Registers a {@link ReactiveMongoTemplate} bean if no other bean of the same type is
  * configured.
- * <p>
- * Honors the {@literal spring.data.mongodb.database} property if set, otherwise connects
- * to the {@literal test} database.
  *
  * @author Mark Paluch
  * @author Artsiom Yudovin
+ * @author Moritz Halbritter
+ * @author Andy Wilkinson
+ * @author Phillip Webb
+ * @author Scott Frederick
  * @since 2.0.0
  */
-@Configuration(proxyBeanMethods = false)
+@AutoConfiguration(after = MongoReactiveAutoConfiguration.class)
 @ConditionalOnClass({ MongoClient.class, ReactiveMongoTemplate.class })
 @ConditionalOnBean(MongoClient.class)
 @EnableConfigurationProperties(MongoProperties.class)
 @Import(MongoDataConfiguration.class)
-@AutoConfigureAfter(MongoReactiveAutoConfiguration.class)
 public class MongoReactiveDataAutoConfiguration {
+
+	private final MongoConnectionDetails connectionDetails;
+
+	MongoReactiveDataAutoConfiguration(MongoConnectionDetails connectionDetails) {
+		this.connectionDetails = connectionDetails;
+	}
 
 	@Bean
 	@ConditionalOnMissingBean(ReactiveMongoDatabaseFactory.class)
-	public SimpleReactiveMongoDatabaseFactory reactiveMongoDatabaseFactory(MongoProperties properties,
-			MongoClient mongo) {
-		String database = properties.getMongoClientDatabase();
+	public SimpleReactiveMongoDatabaseFactory reactiveMongoDatabaseFactory(MongoClient mongo,
+			MongoProperties properties) {
+		String database = properties.getDatabase();
+		if (database == null) {
+			database = this.connectionDetails.getConnectionString().getDatabase();
+		}
 		return new SimpleReactiveMongoDatabaseFactory(mongo, database);
 	}
 
@@ -109,26 +119,27 @@ public class MongoReactiveDataAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean(ReactiveGridFsOperations.class)
 	public ReactiveGridFsTemplate reactiveGridFsTemplate(ReactiveMongoDatabaseFactory reactiveMongoDatabaseFactory,
-			MappingMongoConverter mappingMongoConverter, DataBufferFactory dataBufferFactory,
-			MongoProperties properties) {
+			MappingMongoConverter mappingMongoConverter, DataBufferFactory dataBufferFactory) {
 		return new ReactiveGridFsTemplate(dataBufferFactory,
-				new GridFsReactiveMongoDatabaseFactory(reactiveMongoDatabaseFactory, properties), mappingMongoConverter,
-				null);
+				new GridFsReactiveMongoDatabaseFactory(reactiveMongoDatabaseFactory, this.connectionDetails),
+				mappingMongoConverter,
+				(this.connectionDetails.getGridFs() != null) ? this.connectionDetails.getGridFs().getBucket() : null);
 	}
 
 	/**
-	 * {@link ReactiveMongoDatabaseFactory} decorator to use
-	 * {@link MongoProperties#getGridFsDatabase()} when set.
+	 * {@link ReactiveMongoDatabaseFactory} decorator to use {@link GridFs#getGridFs()}
+	 * from the {@link MongoConnectionDetails} when set.
 	 */
 	static class GridFsReactiveMongoDatabaseFactory implements ReactiveMongoDatabaseFactory {
 
 		private final ReactiveMongoDatabaseFactory delegate;
 
-		private final MongoProperties properties;
+		private final MongoConnectionDetails connectionDetails;
 
-		GridFsReactiveMongoDatabaseFactory(ReactiveMongoDatabaseFactory delegate, MongoProperties properties) {
+		GridFsReactiveMongoDatabaseFactory(ReactiveMongoDatabaseFactory delegate,
+				MongoConnectionDetails connectionDetails) {
 			this.delegate = delegate;
-			this.properties = properties;
+			this.connectionDetails = connectionDetails;
 		}
 
 		@Override
@@ -138,11 +149,15 @@ public class MongoReactiveDataAutoConfiguration {
 
 		@Override
 		public Mono<MongoDatabase> getMongoDatabase() throws DataAccessException {
-			String gridFsDatabase = this.properties.getGridFsDatabase();
+			String gridFsDatabase = getGridFsDatabase(this.connectionDetails);
 			if (StringUtils.hasText(gridFsDatabase)) {
 				return this.delegate.getMongoDatabase(gridFsDatabase);
 			}
 			return this.delegate.getMongoDatabase();
+		}
+
+		private String getGridFsDatabase(MongoConnectionDetails connectionDetails) {
+			return (connectionDetails.getGridFs() != null) ? connectionDetails.getGridFs().getDatabase() : null;
 		}
 
 		@Override

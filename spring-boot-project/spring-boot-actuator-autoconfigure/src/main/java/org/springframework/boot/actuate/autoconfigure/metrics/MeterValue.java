@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,18 +63,18 @@ public final class MeterValue {
 	}
 
 	private Double getDistributionSummaryValue() {
-		if (this.value instanceof Double) {
-			return (Double) this.value;
+		if (this.value instanceof Double doubleValue) {
+			return doubleValue;
 		}
 		return null;
 	}
 
 	private Long getTimerValue() {
-		if (this.value instanceof Double) {
-			return TimeUnit.MILLISECONDS.toNanos(((Double) this.value).longValue());
+		if (this.value instanceof Double doubleValue) {
+			return TimeUnit.MILLISECONDS.toNanos(doubleValue.longValue());
 		}
-		if (this.value instanceof Duration) {
-			return ((Duration) this.value).toNanos();
+		if (this.value instanceof Duration duration) {
+			return duration.toNanos();
 		}
 		return null;
 	}
@@ -86,38 +86,28 @@ public final class MeterValue {
 	 * @return a {@link MeterValue} instance
 	 */
 	public static MeterValue valueOf(String value) {
-		Double number = safeParseDouble(value);
-		if (number != null) {
-			return new MeterValue(number);
+		Duration duration = safeParseDuration(value);
+		if (duration != null) {
+			return new MeterValue(duration);
 		}
-		return new MeterValue(DurationStyle.detectAndParse(value));
-	}
-
-	/**
-	 * Return a new {@link MeterValue} instance for the given long value.
-	 * @param value the source value
-	 * @return a {@link MeterValue} instance
-	 * @deprecated as of 2.3.0 in favor of {@link #valueOf(double)}
-	 */
-	@Deprecated
-	public static MeterValue valueOf(long value) {
-		return new MeterValue(value);
+		return new MeterValue(Double.valueOf(value));
 	}
 
 	/**
 	 * Return a new {@link MeterValue} instance for the given double value.
 	 * @param value the source value
 	 * @return a {@link MeterValue} instance
+	 * @since 2.3.0
 	 */
 	public static MeterValue valueOf(double value) {
 		return new MeterValue(value);
 	}
 
-	private static Double safeParseDouble(String value) {
+	private static Duration safeParseDuration(String value) {
 		try {
-			return Double.parseDouble(value);
+			return DurationStyle.detectAndParse(value);
 		}
-		catch (NumberFormatException nfe) {
+		catch (IllegalArgumentException ex) {
 			return null;
 		}
 	}

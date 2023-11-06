@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ class ConfigurationPropertySourcesTests {
 		sources.addLast(new MapPropertySource("config", Collections.singletonMap("server.port", "4568")));
 		int size = sources.size();
 		ConfigurationPropertySources.attach(environment);
-		assertThat(sources.size()).isEqualTo(size + 1);
+		assertThat(sources).hasSize(size + 1);
 		PropertyResolver resolver = new PropertySourcesPropertyResolver(sources);
 		assertThat(resolver.getProperty("server.port")).isEqualTo("1234");
 	}
@@ -66,9 +66,22 @@ class ConfigurationPropertySourcesTests {
 		ConfigurableEnvironment child = new StandardEnvironment();
 		child.merge(parent);
 		child.getPropertySources()
-				.addLast(new MapPropertySource("config", Collections.singletonMap("my.example_property", "1234")));
+			.addLast(new MapPropertySource("config", Collections.singletonMap("my.example_property", "1234")));
 		ConfigurationPropertySources.attach(child);
 		assertThat(child.getProperty("my.example-property")).isEqualTo("1234");
+	}
+
+	@Test
+	void attachWhenAlreadyAttachedWithSameSourcesShouldReturnExistingInstance() {
+		ConfigurableEnvironment environment = new StandardEnvironment();
+		MutablePropertySources sources = environment.getPropertySources();
+		sources.addLast(new SystemEnvironmentPropertySource("system", Collections.singletonMap("SERVER_PORT", "1234")));
+		sources.addLast(new MapPropertySource("config", Collections.singletonMap("server.port", "4568")));
+		ConfigurationPropertySources.attach(environment);
+		Iterable<ConfigurationPropertySource> first = ConfigurationPropertySources.get(environment);
+		ConfigurationPropertySources.attach(environment);
+		Iterable<ConfigurationPropertySource> second = ConfigurationPropertySources.get(environment);
+		assertThat(first).isSameAs(second);
 	}
 
 	@Test
@@ -102,8 +115,9 @@ class ConfigurationPropertySourcesTests {
 	@Test
 	void fromPropertySourceShouldReturnSpringConfigurationPropertySource() {
 		PropertySource<?> source = new MapPropertySource("foo", Collections.singletonMap("foo", "bar"));
-		ConfigurationPropertySource configurationPropertySource = ConfigurationPropertySources.from(source).iterator()
-				.next();
+		ConfigurationPropertySource configurationPropertySource = ConfigurationPropertySources.from(source)
+			.iterator()
+			.next();
 		assertThat(configurationPropertySource).isInstanceOf(SpringConfigurationPropertySource.class);
 	}
 
@@ -203,7 +217,7 @@ class ConfigurationPropertySourcesTests {
 		}
 
 		private static Map<String, Object> createProperties(int index) {
-			Map<String, Object> map = new LinkedHashMap<String, Object>();
+			Map<String, Object> map = new LinkedHashMap<>();
 			for (int i = 0; i < 1000; i++) {
 				String name = "test-" + index + "-property-" + i;
 				String value = name + "-value";

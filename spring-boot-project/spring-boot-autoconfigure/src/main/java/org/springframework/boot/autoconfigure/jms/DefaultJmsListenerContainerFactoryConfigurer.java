@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,11 @@ package org.springframework.boot.autoconfigure.jms;
 
 import java.time.Duration;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.ExceptionListener;
 
+import org.springframework.boot.autoconfigure.jms.JmsProperties.Listener.Session;
+import org.springframework.boot.context.properties.PropertyMapper;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
 import org.springframework.jms.support.converter.MessageConverter;
 import org.springframework.jms.support.destination.DestinationResolver;
@@ -30,6 +33,8 @@ import org.springframework.util.Assert;
  * Configure {@link DefaultJmsListenerContainerFactory} with sensible defaults.
  *
  * @author Stephane Nicoll
+ * @author Eddú Meléndez
+ * @author Vedran Pavic
  * @since 1.3.3
  */
 public final class DefaultJmsListenerContainerFactoryConfigurer {
@@ -37,6 +42,8 @@ public final class DefaultJmsListenerContainerFactoryConfigurer {
 	private DestinationResolver destinationResolver;
 
 	private MessageConverter messageConverter;
+
+	private ExceptionListener exceptionListener;
 
 	private JtaTransactionManager transactionManager;
 
@@ -58,6 +65,15 @@ public final class DefaultJmsListenerContainerFactoryConfigurer {
 	 */
 	void setMessageConverter(MessageConverter messageConverter) {
 		this.messageConverter = messageConverter;
+	}
+
+	/**
+	 * Set the {@link ExceptionListener} to use or {@code null} if no exception listener
+	 * should be associated by default.
+	 * @param exceptionListener the {@link ExceptionListener}
+	 */
+	void setExceptionListener(ExceptionListener exceptionListener) {
+		this.exceptionListener = exceptionListener;
 	}
 
 	/**
@@ -88,31 +104,21 @@ public final class DefaultJmsListenerContainerFactoryConfigurer {
 		Assert.notNull(connectionFactory, "ConnectionFactory must not be null");
 		factory.setConnectionFactory(connectionFactory);
 		factory.setPubSubDomain(this.jmsProperties.isPubSubDomain());
-		if (this.transactionManager != null) {
-			factory.setTransactionManager(this.transactionManager);
-		}
-		else {
+		JmsProperties.Listener listenerProperties = this.jmsProperties.getListener();
+		Session sessionProperties = listenerProperties.getSession();
+		PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+		map.from(this.transactionManager).to(factory::setTransactionManager);
+		map.from(this.destinationResolver).to(factory::setDestinationResolver);
+		map.from(this.messageConverter).to(factory::setMessageConverter);
+		map.from(this.exceptionListener).to(factory::setExceptionListener);
+		map.from(sessionProperties.getAcknowledgeMode()::getMode).to(factory::setSessionAcknowledgeMode);
+		if (this.transactionManager == null && sessionProperties.getTransacted() == null) {
 			factory.setSessionTransacted(true);
 		}
-		if (this.destinationResolver != null) {
-			factory.setDestinationResolver(this.destinationResolver);
-		}
-		if (this.messageConverter != null) {
-			factory.setMessageConverter(this.messageConverter);
-		}
-		JmsProperties.Listener listener = this.jmsProperties.getListener();
-		factory.setAutoStartup(listener.isAutoStartup());
-		if (listener.getAcknowledgeMode() != null) {
-			factory.setSessionAcknowledgeMode(listener.getAcknowledgeMode().getMode());
-		}
-		String concurrency = listener.formatConcurrency();
-		if (concurrency != null) {
-			factory.setConcurrency(concurrency);
-		}
-		Duration receiveTimeout = listener.getReceiveTimeout();
-		if (receiveTimeout != null) {
-			factory.setReceiveTimeout(receiveTimeout.toMillis());
-		}
+		map.from(sessionProperties::getTransacted).to(factory::setSessionTransacted);
+		map.from(listenerProperties::isAutoStartup).to(factory::setAutoStartup);
+		map.from(listenerProperties::formatConcurrency).to(factory::setConcurrency);
+		map.from(listenerProperties::getReceiveTimeout).as(Duration::toMillis).to(factory::setReceiveTimeout);
 	}
 
 }

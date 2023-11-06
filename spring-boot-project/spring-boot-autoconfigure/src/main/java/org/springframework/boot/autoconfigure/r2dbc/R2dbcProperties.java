@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -137,6 +137,11 @@ public class R2dbcProperties {
 	public static class Pool {
 
 		/**
+		 * Minimal number of idle connections.
+		 */
+		private int minIdle = 0;
+
+		/**
 		 * Maximum amount of time that a connection is allowed to sit idle in the pool.
 		 */
 		private Duration maxIdleTime = Duration.ofMinutes(30);
@@ -152,6 +157,12 @@ public class R2dbcProperties {
 		 * indefinitely.
 		 */
 		private Duration maxAcquireTime;
+
+		/**
+		 * Maximum time to validate a connection from the pool. By default, wait
+		 * indefinitely.
+		 */
+		private Duration maxValidationTime;
 
 		/**
 		 * Maximum time to wait to create a new connection. By default, wait indefinitely.
@@ -178,6 +189,19 @@ public class R2dbcProperties {
 		 */
 		private ValidationDepth validationDepth = ValidationDepth.LOCAL;
 
+		/**
+		 * Whether pooling is enabled. Requires r2dbc-pool.
+		 */
+		private boolean enabled = true;
+
+		public int getMinIdle() {
+			return this.minIdle;
+		}
+
+		public void setMinIdle(int minIdle) {
+			this.minIdle = minIdle;
+		}
+
 		public Duration getMaxIdleTime() {
 			return this.maxIdleTime;
 		}
@@ -192,6 +216,14 @@ public class R2dbcProperties {
 
 		public void setMaxLifeTime(Duration maxLifeTime) {
 			this.maxLifeTime = maxLifeTime;
+		}
+
+		public Duration getMaxValidationTime() {
+			return this.maxValidationTime;
+		}
+
+		public void setMaxValidationTime(Duration maxValidationTime) {
+			this.maxValidationTime = maxValidationTime;
 		}
 
 		public Duration getMaxAcquireTime() {
@@ -240,6 +272,14 @@ public class R2dbcProperties {
 
 		public void setValidationDepth(ValidationDepth validationDepth) {
 			this.validationDepth = validationDepth;
+		}
+
+		public boolean isEnabled() {
+			return this.enabled;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
 		}
 
 	}

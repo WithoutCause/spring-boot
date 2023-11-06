@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,22 +18,26 @@ package org.springframework.boot.gradle.tasks.bundling;
 
 import java.io.File;
 import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.function.Function;
 
 import org.gradle.api.Action;
-import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.Project;
+import org.gradle.api.artifacts.result.ResolvedArtifactResult;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileCopyDetails;
 import org.gradle.api.file.FileTreeElement;
 import org.gradle.api.internal.file.copy.CopyAction;
-import org.gradle.api.plugins.JavaPluginConvention;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Nested;
-import org.gradle.api.tasks.Optional;
-import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.bundling.Jar;
+import org.gradle.work.DisableCachingByDefault;
+
+import org.springframework.boot.loader.tools.LoaderImplementation;
 
 /**
  * A custom {@link Jar} task that produces a Spring Boot executable jar.
@@ -44,9 +48,10 @@ import org.gradle.api.tasks.bundling.Jar;
  * @author Phillip Webb
  * @since 2.0.0
  */
-public class BootJar extends Jar implements BootArchive {
+@DisableCachingByDefault(because = "Not worth caching")
+public abstract class BootJar extends Jar implements BootArchive {
 
-	private static final String LAUNCHER = "org.springframework.boot.loader.JarLauncher";
+	private static final String LAUNCHER = "org.springframework.boot.loader.launch.JarLauncher";
 
 	private static final String CLASSES_DIRECTORY = "BOOT-INF/classes/";
 
@@ -60,27 +65,36 @@ public class BootJar extends Jar implements BootArchive {
 
 	private final CopySpec bootInfSpec;
 
-	private String mainClassName;
+	private final LayeredSpec layered;
+
+	private final Provider<String> projectName;
+
+	private final Provider<Object> projectVersion;
+
+	private final ResolvedDependencies resolvedDependencies;
 
 	private FileCollection classpath;
-
-	private LayeredSpec layered = new LayeredSpec();
 
 	/**
 	 * Creates a new {@code BootJar} task.
 	 */
 	public BootJar() {
-		this.support = new BootArchiveSupport(LAUNCHER, this::isLibrary, this::resolveZipCompression);
-		this.bootInfSpec = getProject().copySpec().into("BOOT-INF");
+		this.support = new BootArchiveSupport(LAUNCHER, new LibrarySpec(), new ZipCompressionResolver());
+		Project project = getProject();
+		this.bootInfSpec = project.copySpec().into("BOOT-INF");
+		this.layered = project.getObjects().newInstance(LayeredSpec.class);
 		configureBootInfSpec(this.bootInfSpec);
 		getMainSpec().with(this.bootInfSpec);
+		this.projectName = project.provider(project::getName);
+		this.projectVersion = project.provider(project::getVersion);
+		this.resolvedDependencies = new ResolvedDependencies(project);
 	}
 
 	private void configureBootInfSpec(CopySpec bootInfSpec) {
 		bootInfSpec.into("classes", fromCallTo(this::classpathDirectories));
 		bootInfSpec.into("lib", fromCallTo(this::classpathFiles)).eachFile(this.support::excludeNonZipFiles);
-		bootInfSpec.filesMatching("module-info.class",
-				(details) -> details.setRelativePath(details.getRelativeSourcePath()));
+		this.support.moveModuleInfoToRoot(bootInfSpec);
+		moveMetaInfToRoot(bootInfSpec);
 	}
 
 	private Iterable<File> classpathDirectories() {
@@ -95,51 +109,48 @@ public class BootJar extends Jar implements BootArchive {
 		return (this.classpath != null) ? this.classpath.filter(filter) : Collections.emptyList();
 	}
 
+	private void moveMetaInfToRoot(CopySpec spec) {
+		spec.eachFile((file) -> {
+			String path = file.getRelativeSourcePath().getPathString();
+			if (path.startsWith("META-INF/") && !path.equals("META-INF/aop.xml") && !path.endsWith(".kotlin_module")
+					&& !path.startsWith("META-INF/services/")) {
+				this.support.moveToRoot(file);
+			}
+		});
+	}
+
+	@Override
+	public void resolvedArtifacts(Provider<Set<ResolvedArtifactResult>> resolvedArtifacts) {
+		this.resolvedDependencies.resolvedArtifacts(resolvedArtifacts);
+	}
+
+	@Nested
+	ResolvedDependencies getResolvedDependencies() {
+		return this.resolvedDependencies;
+	}
+
 	@Override
 	public void copy() {
-		this.support.configureManifest(getManifest(), getMainClassName(), CLASSES_DIRECTORY, LIB_DIRECTORY,
-				CLASSPATH_INDEX, (isLayeredDisabled()) ? null : LAYERS_INDEX);
+		this.support.configureManifest(getManifest(), getMainClass().get(), CLASSES_DIRECTORY, LIB_DIRECTORY,
+				CLASSPATH_INDEX, (isLayeredDisabled()) ? null : LAYERS_INDEX,
+				this.getTargetJavaVersion().get().getMajorVersion(), this.projectName.get(), this.projectVersion.get());
 		super.copy();
 	}
 
 	private boolean isLayeredDisabled() {
-		return this.layered != null && !this.layered.isEnabled();
+		return !getLayered().getEnabled().get();
 	}
 
 	@Override
 	protected CopyAction createCopyAction() {
+		LoaderImplementation loaderImplementation = getLoaderImplementation().getOrElse(LoaderImplementation.DEFAULT);
 		if (!isLayeredDisabled()) {
-			JavaPluginConvention javaPluginConvention = getProject().getConvention()
-					.findPlugin(JavaPluginConvention.class);
-			Iterable<SourceSet> sourceSets = (javaPluginConvention != null) ? javaPluginConvention.getSourceSets()
-					: Collections.emptySet();
-			LayerResolver layerResolver = new LayerResolver(sourceSets, getConfigurations(), this.layered,
-					this::isLibrary);
-			String layerToolsLocation = this.layered.isIncludeLayerTools() ? LIB_DIRECTORY : null;
-			return this.support.createCopyAction(this, layerResolver, layerToolsLocation);
+			LayerResolver layerResolver = new LayerResolver(this.resolvedDependencies, this.layered, this::isLibrary);
+			String layerToolsLocation = this.layered.getIncludeLayerTools().get() ? LIB_DIRECTORY : null;
+			return this.support.createCopyAction(this, this.resolvedDependencies, loaderImplementation, true,
+					layerResolver, layerToolsLocation);
 		}
-		return this.support.createCopyAction(this);
-	}
-
-	@Internal
-	protected Iterable<Configuration> getConfigurations() {
-		return getProject().getConfigurations();
-	}
-
-	@Override
-	public String getMainClassName() {
-		if (this.mainClassName == null) {
-			String manifestStartClass = (String) getManifest().getAttributes().get("Start-Class");
-			if (manifestStartClass != null) {
-				setMainClassName(manifestStartClass);
-			}
-		}
-		return this.mainClassName;
-	}
-
-	@Override
-	public void setMainClassName(String mainClassName) {
-		this.mainClassName = mainClassName;
+		return this.support.createCopyAction(this, this.resolvedDependencies, loaderImplementation, true);
 	}
 
 	@Override
@@ -168,32 +179,22 @@ public class BootJar extends Jar implements BootArchive {
 	}
 
 	/**
-	 * Returns the spec that describes the layers in a layerd jar.
-	 * @return the spec for the layers or {@code null}.
+	 * Returns the spec that describes the layers in a layered jar.
+	 * @return the spec for the layers
 	 * @since 2.3.0
 	 */
 	@Nested
-	@Optional
 	public LayeredSpec getLayered() {
 		return this.layered;
 	}
 
 	/**
-	 * Configures the jar to be layered using the default layering.
-	 * @since 2.3.0
-	 */
-	public void layered() {
-		enableLayeringIfNecessary();
-	}
-
-	/**
-	 * Configures the jar to be layered, customizing the layers using the given
-	 * {@code action}.
+	 * Configures the jar's layering using the given {@code action}.
 	 * @param action the action to apply
 	 * @since 2.3.0
 	 */
 	public void layered(Action<LayeredSpec> action) {
-		action.execute(enableLayeringIfNecessary());
+		action.execute(this.layered);
 	}
 
 	@Override
@@ -216,18 +217,6 @@ public class BootJar extends Jar implements BootArchive {
 	@Override
 	public void setClasspath(FileCollection classpath) {
 		this.classpath = getProject().files(classpath);
-	}
-
-	@Override
-	@Deprecated
-	public boolean isExcludeDevtools() {
-		return this.support.isExcludeDevtools();
-	}
-
-	@Override
-	@Deprecated
-	public void setExcludeDevtools(boolean excludeDevtools) {
-		this.support.setExcludeDevtools(excludeDevtools);
 	}
 
 	/**
@@ -290,13 +279,6 @@ public class BootJar extends Jar implements BootArchive {
 		return launchScript;
 	}
 
-	private LayeredSpec enableLayeringIfNecessary() {
-		if (this.layered == null) {
-			this.layered = new LayeredSpec();
-		}
-		return this.layered;
-	}
-
 	/**
 	 * Syntactic sugar that makes {@link CopySpec#into} calls a little easier to read.
 	 * @param <T> the result type
@@ -315,6 +297,24 @@ public class BootJar extends Jar implements BootArchive {
 	 */
 	private static <T> Callable<T> callTo(Callable<T> callable) {
 		return callable;
+	}
+
+	private final class LibrarySpec implements Spec<FileCopyDetails> {
+
+		@Override
+		public boolean isSatisfiedBy(FileCopyDetails details) {
+			return isLibrary(details);
+		}
+
+	}
+
+	private final class ZipCompressionResolver implements Function<FileCopyDetails, ZipCompression> {
+
+		@Override
+		public ZipCompression apply(FileCopyDetails details) {
+			return resolveZipCompression(details);
+		}
+
 	}
 
 }

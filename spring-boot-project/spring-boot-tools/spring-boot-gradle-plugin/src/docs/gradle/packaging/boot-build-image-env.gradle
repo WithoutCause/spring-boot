@@ -3,12 +3,14 @@ plugins {
 	id 'org.springframework.boot' version '{gradle-project-version}'
 }
 
-bootJar {
-	mainClassName 'com.example.ExampleApplication'
-}
-
 // tag::env[]
-bootBuildImage {
-	environment = ["BP_JVM_VERSION" : "13.0.1"]
+tasks.named("bootBuildImage") {
+	environment["BP_JVM_VERSION"] = "17"
 }
 // end::env[]
+
+tasks.register("bootBuildImageEnvironment") {
+	doFirst {
+		bootBuildImage.environment.get().each { name, value -> println "$name=$value" }
+	}
+}

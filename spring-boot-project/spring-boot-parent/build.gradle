@@ -20,22 +20,58 @@ bom {
 			]
 		}
 	}
-	library("Commons Compress", "1.20") {
+	library("API Guardian", "1.1.2") {
+		group("org.apiguardian") {
+			modules = [
+				"apiguardian-api"
+			]
+		}
+	}
+	library("C3P0", "0.9.5.5") {
+		group("com.mchange") {
+			modules = [
+					"c3p0"
+			]
+		}
+	}
+	library("Commons Compress", "1.23.0") {
 		group("org.apache.commons") {
 			modules = [
 				"commons-compress"
 			]
 		}
 	}
-	library("Commons FileUpload", "1.4") {
+	library("Commons FileUpload", "1.5") {
 		group("commons-fileupload") {
 			modules = [
 				"commons-fileupload"
 			]
 		}
 	}
+	library("Crac", "1.4.0") {
+		group("org.crac") {
+			modules = [
+				"crac"
+			]
+		}
+	}
+	library("Jakarta Inject", "2.0.1") {
+		group("jakarta.inject") {
+			modules = [
+				"jakarta.inject-api"
+			]
+		}
+	}
+	library("Janino", "3.1.10") {
+		group("org.codehaus.janino") {
+			imports = [
+				"janino"
+			]
+		}
+	}
 	library("JLine", "2.11") {
-		prohibit("[2.12,)") {
+		prohibit {
+			versionRange "[2.12,)"
 			because "it contains breaking changes"
 		}
 		group("jline") {
@@ -44,7 +80,7 @@ bom {
 			]
 		}
 	}
-	library("JNA", "5.5.0") {
+	library("JNA", "5.13.0") {
 		group("net.java.dev.jna") {
 			modules = [
 				"jna-platform"
@@ -58,57 +94,75 @@ bom {
 			]
 		}
 	}
-	library("Maven", "3.6.3") {
+	library("Maven", "${mavenVersion}") {
 		group("org.apache.maven") {
 			modules = [
+				"maven-core",
+				"maven-model-builder",
 				"maven-plugin-api",
-				"maven-resolver-provider",
-				"maven-settings-builder"
+				"maven-resolver-provider"
 			]
 		}
 	}
-	library("Maven Common Artifact Filters", "3.1.0") {
+	library("Maven Common Artifact Filters", "3.3.2") {
 		group("org.apache.maven.shared") {
 			modules = [
 				"maven-common-artifact-filters"
 			]
 		}
 	}
-	library("Maven Invoker", "3.0.1") {
+	library("Maven Invoker", "3.2.0") {
 		group("org.apache.maven.shared") {
 			modules = [
 				"maven-invoker"
 			]
 		}
 	}
-	library("Maven Plugin Tools", "3.6.0") {
+	library("Maven Plugin Tools", "3.9.0") {
 		group("org.apache.maven.plugin-tools") {
 			modules = [
 				"maven-plugin-annotations"
 			]
 		}
 	}
-	library("Maven Resolver", "1.4.2") {
+	library("Maven Resolver", "1.9.14") {
 		group("org.apache.maven.resolver") {
 			modules = [
+				"maven-resolver-api",
 				"maven-resolver-connector-basic",
 				"maven-resolver-impl",
+				"maven-resolver-spi",
 				"maven-resolver-transport-file",
-				"maven-resolver-transport-http"
+				"maven-resolver-transport-http",
+				"maven-resolver-util"
 			]
 		}
 	}
-	library("Maven Shade Plugin", "3.2.4") {
+	library("Maven Shade Plugin", "3.5.0") {
 		group("org.apache.maven.plugins") {
 			modules = [
 				"maven-shade-plugin"
 			]
 		}
 	}
-	library("MockK", "1.10.0") {
+	library("Micrometer Context Propagation", "1.0.5") {
+		group("io.micrometer") {
+			modules = [
+					"context-propagation"
+			]
+		}
+	}
+	library("MockK", "1.13.5") {
 		group("io.mockk") {
 			modules = [
 				"mockk"
+			]
+		}
+	}
+	library("Native Gradle Plugin", "${nativeBuildToolsVersion}") {
+		group("org.graalvm.buildtools") {
+			modules = [
+				"native-gradle-plugin"
 			]
 		}
 	}
@@ -126,6 +180,13 @@ bom {
 			]
 		}
 	}
+	library("Simple JNDI", "0.23.0") {
+		group("com.github.h-thurow") {
+			modules = [
+				"simple-jndi"
+			]
+		}
+	}
 	library("Sisu", "2.6.0") {
 		group("org.sonatype.sisu") {
 			modules = [
@@ -133,11 +194,10 @@ bom {
 			]
 		}
 	}
-	library("Spock Framework", "1.3-groovy-2.5") {
+	library("Spock Framework", "2.3-groovy-4.0") {
 		group("org.spockframework") {
-			modules = [
-				"spock-core",
-				"spock-spring"
+			imports = [
+				"spock-bom"
 			]
 		}
 	}
@@ -148,18 +208,11 @@ bom {
 			]
 		}
 	}
-	library("Spring Asciidoctor Extensions", "0.4.3.RELEASE") {
+	library("Spring Asciidoctor Extensions", "0.6.3") {
 		group("io.spring.asciidoctor") {
 			modules = [
-				"spring-asciidoctor-extensions-block-switch",
-				"spring-asciidoctor-extensions-spring-boot"
-			]
-		}
-	}
-	library("Testcontainers", "1.14.3") {
-		group("org.testcontainers") {
-			imports = [
-				"testcontainers-bom"
+				"spring-asciidoctor-extensions-spring-boot",
+				"spring-asciidoctor-extensions-section-ids"
 			]
 		}
 	}
@@ -167,4 +220,9 @@ bom {
 
 dependencies {
 	api(enforcedPlatform(project(":spring-boot-project:spring-boot-dependencies")))
+}
+
+tasks.withType(GenerateModuleMetadata).configureEach {
+	// Internal module so enforced platform dependencies are OK
+	suppressedValidationErrors.add('enforced-platform')
 }

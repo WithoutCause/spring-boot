@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ import org.apache.catalina.connector.Connector;
 import org.apache.catalina.core.AprLifecycleListener;
 import org.apache.catalina.loader.WebappLoader;
 import org.apache.catalina.startup.Tomcat;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.coyote.AbstractProtocol;
 import org.apache.coyote.ProtocolHandler;
 import org.apache.coyote.http2.Http2Protocol;
@@ -44,6 +46,7 @@ import org.apache.tomcat.util.scan.StandardJarScanFilter;
 import org.springframework.boot.util.LambdaSafe;
 import org.springframework.boot.web.reactive.server.AbstractReactiveWebServerFactory;
 import org.springframework.boot.web.reactive.server.ReactiveWebServerFactory;
+import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.http.server.reactive.HttpHandler;
 import org.springframework.http.server.reactive.TomcatHttpHandlerAdapter;
@@ -56,10 +59,13 @@ import org.springframework.util.StringUtils;
  *
  * @author Brian Clozel
  * @author HaiTao Zhang
+ * @author Moritz Halbritter
  * @since 2.0.0
  */
 public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFactory
 		implements ConfigurableTomcatWebServerFactory {
+
+	private static final Log logger = LogFactory.getLog(TomcatReactiveWebServerFactory.class);
 
 	private static final Charset DEFAULT_CHARSET = StandardCharsets.UTF_8;
 
@@ -72,7 +78,9 @@ public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFac
 
 	private final List<Valve> engineValves = new ArrayList<>();
 
-	private List<LifecycleListener> contextLifecycleListeners = getDefaultLifecycleListeners();
+	private List<LifecycleListener> contextLifecycleListeners = new ArrayList<>();
+
+	private final List<LifecycleListener> serverLifecycleListeners = getDefaultServerLifecycleListeners();
 
 	private Set<TomcatContextCustomizer> tomcatContextCustomizers = new LinkedHashSet<>();
 
@@ -105,7 +113,7 @@ public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFac
 		super(port);
 	}
 
-	private static List<LifecycleListener> getDefaultLifecycleListeners() {
+	private static List<LifecycleListener> getDefaultServerLifecycleListeners() {
 		AprLifecycleListener aprLifecycleListener = new AprLifecycleListener();
 		return AprLifecycleListener.isAprAvailable() ? new ArrayList<>(Arrays.asList(aprLifecycleListener))
 				: new ArrayList<>();
@@ -119,6 +127,9 @@ public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFac
 		Tomcat tomcat = new Tomcat();
 		File baseDir = (this.baseDirectory != null) ? this.baseDirectory : createTempDir("tomcat");
 		tomcat.setBaseDir(baseDir.getAbsolutePath());
+		for (LifecycleListener listener : this.serverLifecycleListeners) {
+			tomcat.getServer().addLifecycleListener(listener);
+		}
 		Connector connector = new Connector(this.protocol);
 		connector.setThrowOnFailure(true);
 		tomcat.getService().addConnector(connector);
@@ -147,10 +158,11 @@ public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFac
 		context.setPath("");
 		context.setDocBase(docBase.getAbsolutePath());
 		context.addLifecycleListener(new Tomcat.FixContextListener());
-		context.setParentClassLoader(ClassUtils.getDefaultClassLoader());
+		ClassLoader parentClassLoader = ClassUtils.getDefaultClassLoader();
+		context.setParentClassLoader(parentClassLoader);
 		skipAllTldScanning(context);
 		WebappLoader loader = new WebappLoader();
-		loader.setLoaderClass(TomcatEmbeddedWebappClassLoader.class.getName());
+		loader.setLoaderInstance(new TomcatEmbeddedWebappClassLoader(parentClassLoader));
 		loader.setDelegate(true);
 		context.setLoader(loader);
 		Tomcat.addServlet(context, "httpHandlerServlet", servlet).setAsyncSupported(true);
@@ -190,7 +202,10 @@ public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFac
 		}
 		// Don't bind to the socket prematurely if ApplicationContext is slow to start
 		connector.setProperty("bindOnInit", "false");
-		if (getSsl() != null && getSsl().isEnabled()) {
+		if (getHttp2() != null && getHttp2().isEnabled()) {
+			connector.addUpgradeProtocol(new Http2Protocol());
+		}
+		if (Ssl.isEnabled(getSsl())) {
 			customizeSsl(connector);
 		}
 		TomcatConnectorCustomizer compression = new CompressionConnectorCustomizer(getCompression());
@@ -202,8 +217,9 @@ public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFac
 
 	@SuppressWarnings("unchecked")
 	private void invokeProtocolHandlerCustomizers(ProtocolHandler protocolHandler) {
-		LambdaSafe.callbacks(TomcatProtocolHandlerCustomizer.class, this.tomcatProtocolHandlerCustomizers,
-				protocolHandler).invoke((customizer) -> customizer.customize(protocolHandler));
+		LambdaSafe
+			.callbacks(TomcatProtocolHandlerCustomizer.class, this.tomcatProtocolHandlerCustomizers, protocolHandler)
+			.invoke((customizer) -> customizer.customize(protocolHandler));
 	}
 
 	private void customizeProtocol(AbstractProtocol<?> protocol) {
@@ -213,9 +229,11 @@ public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFac
 	}
 
 	private void customizeSsl(Connector connector) {
-		new SslConnectorCustomizer(getSsl(), getSslStoreProvider()).customize(connector);
-		if (getHttp2() != null && getHttp2().isEnabled()) {
-			connector.addUpgradeProtocol(new Http2Protocol());
+		SslConnectorCustomizer customizer = new SslConnectorCustomizer(logger, connector, getSsl().getClientAuth());
+		customizer.customize(getSslBundle());
+		String sslBundleName = getSsl().getBundle();
+		if (StringUtils.hasText(sslBundleName)) {
+			getSslBundles().addBundleUpdateHandler(sslBundleName, customizer::update);
 		}
 	}
 
@@ -325,7 +343,10 @@ public class TomcatReactiveWebServerFactory extends AbstractReactiveWebServerFac
 	}
 
 	/**
-	 * Add {@link Connector}s in addition to the default connector, e.g. for SSL or AJP
+	 * Add {@link Connector}s in addition to the default connector, e.g. for SSL or AJP.
+	 * <p>
+	 * {@link #getTomcatConnectorCustomizers Connector customizers} are not applied to
+	 * connectors added this way.
 	 * @param connectors the connectors to add
 	 * @since 2.2.0
 	 */

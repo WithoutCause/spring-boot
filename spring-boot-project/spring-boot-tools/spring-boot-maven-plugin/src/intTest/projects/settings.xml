@@ -17,25 +17,19 @@
 					<snapshots>
 						<enabled>true</enabled>
 					</snapshots>
+					<checksumPolicy>ignore</checksumPolicy>
 				</repository>
 				<repository>
-					<id>spring-snapshot</id>
-					<url>https://repo.spring.io/snapshot</url>
-					<releases>
-						<enabled>false</enabled>
-					</releases>
-					<snapshots>
-						<enabled>true</enabled>
-					</snapshots>
-				</repository>
-				<repository>
-					<id>spring-milestone</id>
+					<id>spring-milestones</id>
+					<name>Spring Milestones</name>
 					<url>https://repo.spring.io/milestone</url>
-					<releases>
-						<enabled>true</enabled>
-					</releases>
+				</repository>
+				<repository>
+					<id>spring-snapshots</id>
+					<name>Spring Snapshots</name>
+					<url>https://repo.spring.io/snapshot</url>
 					<snapshots>
-						<enabled>false</enabled>
+						<enabled>true</enabled>
 					</snapshots>
 				</repository>
 			</repositories>
@@ -49,26 +43,12 @@
 					<snapshots>
 						<enabled>true</enabled>
 					</snapshots>
+					<checksumPolicy>ignore</checksumPolicy>
 				</pluginRepository>
 				<pluginRepository>
-					<id>spring-snapshot</id>
-					<url>https://repo.spring.io/snapshot</url>
-					<releases>
-						<enabled>false</enabled>
-					</releases>
-					<snapshots>
-						<enabled>true</enabled>
-					</snapshots>
-				</pluginRepository>
-				<pluginRepository>
-					<id>spring-milestone</id>
+					<id>spring-milestones</id>
+					<name>Spring Milestones</name>
 					<url>https://repo.spring.io/milestone</url>
-					<releases>
-						<enabled>true</enabled>
-					</releases>
-					<snapshots>
-						<enabled>false</enabled>
-					</snapshots>
 				</pluginRepository>
 			</pluginRepositories>
 		</profile>

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,14 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import groovy.lang.Closure;
+import javax.inject.Inject;
+
 import org.gradle.api.Action;
+import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.provider.ListProperty;
+import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Optional;
-import org.gradle.util.ConfigureUtil;
 
 import org.springframework.boot.loader.tools.Layer;
 import org.springframework.boot.loader.tools.Layers;
@@ -41,64 +44,45 @@ import org.springframework.boot.loader.tools.layer.LibraryContentFilter;
 import org.springframework.util.Assert;
 
 /**
- * Encapsulates the configuration for a layered jar.
+ * Encapsulates the configuration for a layered archive.
  *
  * @author Madhura Bhave
  * @author Scott Frederick
  * @author Phillip Webb
  * @since 2.3.0
  */
-public class LayeredSpec {
+public abstract class LayeredSpec {
 
-	private boolean includeLayerTools = true;
+	private ApplicationSpec application;
 
-	private boolean enabled = true;
-
-	private ApplicationSpec application = new ApplicationSpec();
-
-	private DependenciesSpec dependencies = new DependenciesSpec();
-
-	@Optional
-	private List<String> layerOrder;
+	private DependenciesSpec dependencies;
 
 	private Layers layers;
 
+	@Inject
+	public LayeredSpec(ObjectFactory objects) {
+		this.application = objects.newInstance(ApplicationSpec.class);
+		this.dependencies = objects.newInstance(DependenciesSpec.class);
+		getEnabled().convention(true);
+		getIncludeLayerTools().convention(true);
+	}
+
 	/**
 	 * Returns whether the layer tools should be included as a dependency in the layered
-	 * jar.
+	 * archive.
 	 * @return whether the layer tools should be included
+	 * @since 3.0.0
 	 */
 	@Input
-	public boolean isIncludeLayerTools() {
-		return this.includeLayerTools;
-	}
+	public abstract Property<Boolean> getIncludeLayerTools();
 
 	/**
-	 * Sets whether the layer tools should be included as a dependency in the layered jar.
-	 * @param includeLayerTools {@code true} if the layer tools should be included,
-	 * otherwise {@code false}
-	 */
-	public void setIncludeLayerTools(boolean includeLayerTools) {
-		this.includeLayerTools = includeLayerTools;
-	}
-
-	/**
-	 * Returns whether the layers.idx should be included in the jar.
+	 * Returns whether the layers.idx should be included in the archive.
 	 * @return whether the layers.idx should be included
+	 * @since 3.0.0
 	 */
 	@Input
-	public boolean isEnabled() {
-		return this.enabled;
-	}
-
-	/**
-	 * Sets whether the layers.idx should be included in the jar.
-	 * @param enabled {@code true} layers.idx should be included in the jar, otherwise
-	 * {@code false}
-	 */
-	public void setEnabled(boolean enabled) {
-		this.enabled = enabled;
-	}
+	public abstract Property<Boolean> getEnabled();
 
 	/**
 	 * Returns the {@link ApplicationSpec} that controls the layers to which application
@@ -125,14 +109,6 @@ public class LayeredSpec {
 	 */
 	public void application(Action<ApplicationSpec> action) {
 		action.execute(this.application);
-	}
-
-	/**
-	 * Customizes the {@link ApplicationSpec} using the given {@code closure}.
-	 * @param closure the closure
-	 */
-	public void application(Closure<?> closure) {
-		application(ConfigureUtil.configureUsing(closure));
 	}
 
 	/**
@@ -163,37 +139,13 @@ public class LayeredSpec {
 	}
 
 	/**
-	 * Customizes the {@link DependenciesSpec} using the given {@code closure}.
-	 * @param closure the closure
-	 */
-	public void dependencies(Closure<?> closure) {
-		dependencies(ConfigureUtil.configureUsing(closure));
-	}
-
-	/**
-	 * Returns the order of the layers in the jar from least to most frequently changing.
+	 * Returns the order of the layers in the archive from least to most frequently
+	 * changing.
 	 * @return the layer order
 	 */
 	@Input
-	public List<String> getLayerOrder() {
-		return this.layerOrder;
-	}
-
-	/**
-	 * Sets to order of the layers in the jar from least to most frequently changing.
-	 * @param layerOrder the layer order
-	 */
-	public void setLayerOrder(String... layerOrder) {
-		this.layerOrder = Arrays.asList(layerOrder);
-	}
-
-	/**
-	 * Sets to order of the layers in the jar from least to most frequently changing.
-	 * @param layerOrder the layer order
-	 */
-	public void setLayerOrder(List<String> layerOrder) {
-		this.layerOrder = layerOrder;
-	}
+	@Optional
+	public abstract ListProperty<String> getLayerOrder();
 
 	/**
 	 * Return this configuration as a {@link Layers} instance. This method should only be
@@ -210,48 +162,49 @@ public class LayeredSpec {
 	}
 
 	private Layers createLayers() {
-		if (this.layerOrder == null || this.layerOrder.isEmpty()) {
+		List<String> layerOrder = getLayerOrder().getOrNull();
+		if (layerOrder == null || layerOrder.isEmpty()) {
 			Assert.state(this.application.isEmpty() && this.dependencies.isEmpty(),
 					"The 'layerOrder' must be defined when using custom layering");
 			return Layers.IMPLICIT;
 		}
-		List<Layer> layers = this.layerOrder.stream().map(Layer::new).collect(Collectors.toList());
+		List<Layer> layers = layerOrder.stream().map(Layer::new).toList();
 		return new CustomLayers(layers, this.application.asSelectors(), this.dependencies.asSelectors());
 	}
 
 	/**
 	 * Base class for specs that control the layers to which a category of content should
 	 * belong.
+	 *
+	 * @param <S> the type of {@link IntoLayerSpec} used by this spec
 	 */
-	public abstract static class IntoLayersSpec implements Serializable {
+	public abstract static class IntoLayersSpec<S extends IntoLayerSpec> implements Serializable {
 
 		private final List<IntoLayerSpec> intoLayers;
+
+		private final Function<String, S> specFactory;
 
 		boolean isEmpty() {
 			return this.intoLayers.isEmpty();
 		}
 
-		IntoLayersSpec(IntoLayerSpec... spec) {
+		IntoLayersSpec(Function<String, S> specFactory, IntoLayerSpec... spec) {
 			this.intoLayers = new ArrayList<>(Arrays.asList(spec));
+			this.specFactory = specFactory;
 		}
 
 		public void intoLayer(String layer) {
-			this.intoLayers.add(new IntoLayerSpec(layer));
+			this.intoLayers.add(this.specFactory.apply(layer));
 		}
 
-		public void intoLayer(String layer, Closure<?> closure) {
-			intoLayer(layer, ConfigureUtil.configureUsing(closure));
-		}
-
-		public void intoLayer(String layer, Action<IntoLayerSpec> action) {
-			IntoLayerSpec spec = new IntoLayerSpec(layer);
+		public void intoLayer(String layer, Action<S> action) {
+			S spec = this.specFactory.apply(layer);
 			action.execute(spec);
 			this.intoLayers.add(spec);
 		}
 
-		<T> List<ContentSelector<T>> asSelectors(Function<String, ContentFilter<T>> filterFactory) {
-			return this.intoLayers.stream().map((content) -> content.asSelector(filterFactory))
-					.collect(Collectors.toList());
+		<T> List<ContentSelector<T>> asSelectors(Function<IntoLayerSpec, ContentSelector<T>> selectorFactory) {
+			return this.intoLayers.stream().map(selectorFactory).toList();
 		}
 
 	}
@@ -279,8 +232,8 @@ public class LayeredSpec {
 		/**
 		 * Adds patterns that control the content that is included in the layer. If no
 		 * includes are specified then all content is included. If includes are specified
-		 * then content must match an inclusion pattern and not match any exclusion
-		 * patterns to be included.
+		 * then content must match an inclusion and not match any exclusions to be
+		 * included.
 		 * @param patterns the patterns to be included
 		 */
 		public void include(String... patterns) {
@@ -291,7 +244,7 @@ public class LayeredSpec {
 		 * Adds patterns that control the content that is excluded from the layer. If no
 		 * excludes a specified no content is excluded. If exclusions are specified then
 		 * any content that matches an exclusion will be excluded irrespective of whether
-		 * it matches an include pattern.
+		 * it matches an include.
 		 * @param patterns the patterns to be excluded
 		 */
 		public void exclude(String... patterns) {
@@ -303,13 +256,88 @@ public class LayeredSpec {
 			return new IncludeExcludeContentSelector<>(layer, this.includes, this.excludes, filterFactory);
 		}
 
+		String getIntoLayer() {
+			return this.intoLayer;
+		}
+
+		List<String> getIncludes() {
+			return this.includes;
+		}
+
+		List<String> getExcludes() {
+			return this.excludes;
+		}
+
+	}
+
+	/**
+	 * Spec that controls the dependencies that should be part of a particular layer.
+	 *
+	 * @since 2.4.0
+	 */
+	public static class DependenciesIntoLayerSpec extends IntoLayerSpec {
+
+		private boolean includeProjectDependencies;
+
+		private boolean excludeProjectDependencies;
+
+		/**
+		 * Creates a new {@code IntoLayerSpec} that will control the content of the given
+		 * layer.
+		 * @param intoLayer the layer
+		 */
+		public DependenciesIntoLayerSpec(String intoLayer) {
+			super(intoLayer);
+		}
+
+		/**
+		 * Configures the layer to include project dependencies. If no includes are
+		 * specified then all content is included. If includes are specified then content
+		 * must match an inclusion and not match any exclusions to be included.
+		 */
+		public void includeProjectDependencies() {
+			this.includeProjectDependencies = true;
+		}
+
+		/**
+		 * Configures the layer to exclude project dependencies. If no excludes a
+		 * specified no content is excluded. If exclusions are specified then any content
+		 * that matches an exclusion will be excluded irrespective of whether it matches
+		 * an include.
+		 */
+		public void excludeProjectDependencies() {
+			this.excludeProjectDependencies = true;
+		}
+
+		ContentSelector<Library> asLibrarySelector(Function<String, ContentFilter<Library>> filterFactory) {
+			Layer layer = new Layer(getIntoLayer());
+			List<ContentFilter<Library>> includeFilters = getIncludes().stream()
+				.map(filterFactory)
+				.collect(Collectors.toCollection(ArrayList::new));
+			if (this.includeProjectDependencies) {
+				includeFilters.add(Library::isLocal);
+			}
+			List<ContentFilter<Library>> excludeFilters = getExcludes().stream()
+				.map(filterFactory)
+				.collect(Collectors.toCollection(ArrayList::new));
+			if (this.excludeProjectDependencies) {
+				excludeFilters.add(Library::isLocal);
+			}
+			return new IncludeExcludeContentSelector<>(layer, includeFilters, excludeFilters);
+		}
+
 	}
 
 	/**
 	 * An {@link IntoLayersSpec} that controls the layers to which application classes and
 	 * resources belong.
 	 */
-	public static class ApplicationSpec extends IntoLayersSpec {
+	public static class ApplicationSpec extends IntoLayersSpec<IntoLayerSpec> {
+
+		@Inject
+		public ApplicationSpec() {
+			super(new IntoLayerSpecFactory());
+		}
 
 		/**
 		 * Creates a new {@code ApplicationSpec} with the given {@code contents}.
@@ -317,11 +345,20 @@ public class LayeredSpec {
 		 * included
 		 */
 		public ApplicationSpec(IntoLayerSpec... contents) {
-			super(contents);
+			super(new IntoLayerSpecFactory(), contents);
 		}
 
 		List<ContentSelector<String>> asSelectors() {
-			return asSelectors(ApplicationContentFilter::new);
+			return asSelectors((spec) -> spec.asSelector(ApplicationContentFilter::new));
+		}
+
+		private static final class IntoLayerSpecFactory implements Function<String, IntoLayerSpec>, Serializable {
+
+			@Override
+			public IntoLayerSpec apply(String layer) {
+				return new IntoLayerSpec(layer);
+			}
+
 		}
 
 	}
@@ -329,18 +366,34 @@ public class LayeredSpec {
 	/**
 	 * An {@link IntoLayersSpec} that controls the layers to which dependencies belong.
 	 */
-	public static class DependenciesSpec extends IntoLayersSpec {
+	public static class DependenciesSpec extends IntoLayersSpec<DependenciesIntoLayerSpec> implements Serializable {
+
+		@Inject
+		public DependenciesSpec() {
+			super(new IntoLayerSpecFactory());
+		}
 
 		/**
 		 * Creates a new {@code DependenciesSpec} with the given {@code contents}.
 		 * @param contents specs for the layers in which dependencies should be included
 		 */
-		public DependenciesSpec(IntoLayerSpec... contents) {
-			super(contents);
+		public DependenciesSpec(DependenciesIntoLayerSpec... contents) {
+			super(new IntoLayerSpecFactory(), contents);
 		}
 
 		List<ContentSelector<Library>> asSelectors() {
-			return asSelectors(LibraryContentFilter::new);
+			return asSelectors(
+					(spec) -> ((DependenciesIntoLayerSpec) spec).asLibrarySelector(LibraryContentFilter::new));
+		}
+
+		private static final class IntoLayerSpecFactory
+				implements Function<String, DependenciesIntoLayerSpec>, Serializable {
+
+			@Override
+			public DependenciesIntoLayerSpec apply(String layer) {
+				return new DependenciesIntoLayerSpec(layer);
+			}
+
 		}
 
 	}

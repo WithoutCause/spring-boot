@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ import org.springframework.http.server.reactive.UndertowHttpHandlerAdapter;
 public class UndertowReactiveWebServerFactory extends AbstractReactiveWebServerFactory
 		implements ConfigurableUndertowWebServerFactory {
 
-	private UndertowWebServerFactoryDelegate delegate = new UndertowWebServerFactoryDelegate();
+	private final UndertowWebServerFactoryDelegate delegate = new UndertowWebServerFactoryDelegate();
 
 	/**
 	 * Create a new {@link UndertowReactiveWebServerFactory} instance.
@@ -137,7 +137,7 @@ public class UndertowReactiveWebServerFactory extends AbstractReactiveWebServerF
 
 	@Override
 	public WebServer getWebServer(org.springframework.http.server.reactive.HttpHandler httpHandler) {
-		Undertow.Builder builder = this.delegate.createBuilder(this);
+		Undertow.Builder builder = this.delegate.createBuilder(this, this::getSslBundle);
 		List<HttpHandlerFactory> httpHandlerFactories = this.delegate.createHttpHandlerFactories(this,
 				(next) -> new UndertowHttpHandlerAdapter(httpHandler));
 		return new UndertowWebServer(builder, httpHandlerFactories, getPort() >= 0);

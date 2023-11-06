@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,23 +38,24 @@ public class DeployedPlugin implements Plugin<Project> {
 	public static final String GENERATE_POM_TASK_NAME = "generatePomFileForMavenPublication";
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public void apply(Project project) {
 		project.getPlugins().apply(MavenPublishPlugin.class);
 		project.getPlugins().apply(MavenRepositoryPlugin.class);
 		PublishingExtension publishing = project.getExtensions().getByType(PublishingExtension.class);
 		MavenPublication mavenPublication = publishing.getPublications().create("maven", MavenPublication.class);
-		project.afterEvaluate((evaluated) -> {
-			project.getPlugins().withType(JavaPlugin.class).all((javaPlugin) -> {
-				if (((Jar) project.getTasks().getByName(JavaPlugin.JAR_TASK_NAME)).isEnabled()) {
-					project.getComponents().matching((component) -> component.getName().equals("java"))
-							.all((javaComponent) -> mavenPublication.from(javaComponent));
-				}
-			});
-		});
-		project.getPlugins().withType(JavaPlatformPlugin.class)
-				.all((javaPlugin) -> project.getComponents()
-						.matching((component) -> component.getName().equals("javaPlatform"))
-						.all((javaComponent) -> mavenPublication.from(javaComponent)));
+		project.afterEvaluate((evaluated) -> project.getPlugins().withType(JavaPlugin.class).all((javaPlugin) -> {
+			if (((Jar) project.getTasks().getByName(JavaPlugin.JAR_TASK_NAME)).isEnabled()) {
+				project.getComponents()
+					.matching((component) -> component.getName().equals("java"))
+					.all(mavenPublication::from);
+			}
+		}));
+		project.getPlugins()
+			.withType(JavaPlatformPlugin.class)
+			.all((javaPlugin) -> project.getComponents()
+				.matching((component) -> component.getName().equals("javaPlatform"))
+				.all(mavenPublication::from));
 	}
 
 }

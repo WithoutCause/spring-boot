@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.springframework.boot.autoconfigure.amqp;
 
 import java.util.List;
+import java.util.concurrent.Executor;
 
 import org.springframework.amqp.rabbit.config.AbstractRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
@@ -45,7 +46,18 @@ public abstract class AbstractRabbitListenerContainerFactoryConfigurer<T extends
 
 	private List<RabbitRetryTemplateCustomizer> retryTemplateCustomizers;
 
-	private RabbitProperties rabbitProperties;
+	private final RabbitProperties rabbitProperties;
+
+	private Executor taskExecutor;
+
+	/**
+	 * Creates a new configurer that will use the given {@code rabbitProperties}.
+	 * @param rabbitProperties properties to use
+	 * @since 2.6.0
+	 */
+	protected AbstractRabbitListenerContainerFactoryConfigurer(RabbitProperties rabbitProperties) {
+		this.rabbitProperties = rabbitProperties;
+	}
 
 	/**
 	 * Set the {@link MessageConverter} to use or {@code null} if the out-of-the-box
@@ -73,11 +85,12 @@ public abstract class AbstractRabbitListenerContainerFactoryConfigurer<T extends
 	}
 
 	/**
-	 * Set the {@link RabbitProperties} to use.
-	 * @param rabbitProperties the {@link RabbitProperties}
+	 * Set the task executor to use.
+	 * @param taskExecutor the task executor
+	 * @since 3.2.0
 	 */
-	protected void setRabbitProperties(RabbitProperties rabbitProperties) {
-		this.rabbitProperties = rabbitProperties;
+	public void setTaskExecutor(Executor taskExecutor) {
+		this.taskExecutor = taskExecutor;
 	}
 
 	protected final RabbitProperties getRabbitProperties() {
@@ -116,12 +129,17 @@ public abstract class AbstractRabbitListenerContainerFactoryConfigurer<T extends
 			factory.setIdleEventInterval(configuration.getIdleEventInterval().toMillis());
 		}
 		factory.setMissingQueuesFatal(configuration.isMissingQueuesFatal());
+		factory.setDeBatchingEnabled(configuration.isDeBatchingEnabled());
+		factory.setForceStop(configuration.isForceStop());
+		if (this.taskExecutor != null) {
+			factory.setTaskExecutor(this.taskExecutor);
+		}
 		ListenerRetry retryConfig = configuration.getRetry();
 		if (retryConfig.isEnabled()) {
 			RetryInterceptorBuilder<?, ?> builder = (retryConfig.isStateless()) ? RetryInterceptorBuilder.stateless()
 					: RetryInterceptorBuilder.stateful();
 			RetryTemplate retryTemplate = new RetryTemplateFactory(this.retryTemplateCustomizers)
-					.createRetryTemplate(retryConfig, RabbitRetryTemplateCustomizer.Target.LISTENER);
+				.createRetryTemplate(retryConfig, RabbitRetryTemplateCustomizer.Target.LISTENER);
 			builder.retryOperations(retryTemplate);
 			MessageRecoverer recoverer = (this.messageRecoverer != null) ? this.messageRecoverer
 					: new RejectAndDontRequeueRecoverer();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,9 @@ package org.springframework.boot.autoconfigure.context;
 
 import java.time.Duration;
 
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionMessage;
@@ -25,6 +28,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionOutcome;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.SearchStrategy;
 import org.springframework.boot.autoconfigure.condition.SpringBootCondition;
+import org.springframework.boot.autoconfigure.context.MessageSourceAutoConfiguration.MessageSourceRuntimeHints;
 import org.springframework.boot.autoconfigure.context.MessageSourceAutoConfiguration.ResourceBundleCondition;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -32,7 +36,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.context.annotation.Conditional;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.core.Ordered;
@@ -48,13 +52,15 @@ import org.springframework.util.StringUtils;
  * @author Dave Syer
  * @author Phillip Webb
  * @author Eddú Meléndez
+ * @author Marc Becker
  * @since 1.5.0
  */
-@Configuration(proxyBeanMethods = false)
+@AutoConfiguration
 @ConditionalOnMissingBean(name = AbstractApplicationContext.MESSAGE_SOURCE_BEAN_NAME, search = SearchStrategy.CURRENT)
 @AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE)
 @Conditional(ResourceBundleCondition.class)
 @EnableConfigurationProperties
+@ImportRuntimeHints(MessageSourceRuntimeHints.class)
 public class MessageSourceAutoConfiguration {
 
 	private static final Resource[] NO_RESOURCES = {};
@@ -70,7 +76,7 @@ public class MessageSourceAutoConfiguration {
 		ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();
 		if (StringUtils.hasText(properties.getBasename())) {
 			messageSource.setBasenames(StringUtils
-					.commaDelimitedListToStringArray(StringUtils.trimAllWhitespace(properties.getBasename())));
+				.commaDelimitedListToStringArray(StringUtils.trimAllWhitespace(properties.getBasename())));
 		}
 		if (properties.getEncoding() != null) {
 			messageSource.setDefaultEncoding(properties.getEncoding().name());
@@ -87,7 +93,7 @@ public class MessageSourceAutoConfiguration {
 
 	protected static class ResourceBundleCondition extends SpringBootCondition {
 
-		private static ConcurrentReferenceHashMap<String, ConditionOutcome> cache = new ConcurrentReferenceHashMap<>();
+		private static final ConcurrentReferenceHashMap<String, ConditionOutcome> cache = new ConcurrentReferenceHashMap<>();
 
 		@Override
 		public ConditionOutcome getMatchOutcome(ConditionContext context, AnnotatedTypeMetadata metadata) {
@@ -116,11 +122,20 @@ public class MessageSourceAutoConfiguration {
 			String target = name.replace('.', '/');
 			try {
 				return new PathMatchingResourcePatternResolver(classLoader)
-						.getResources("classpath*:" + target + ".properties");
+					.getResources("classpath*:" + target + ".properties");
 			}
 			catch (Exception ex) {
 				return NO_RESOURCES;
 			}
+		}
+
+	}
+
+	static class MessageSourceRuntimeHints implements RuntimeHintsRegistrar {
+
+		@Override
+		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+			hints.resources().registerPattern("messages.properties").registerPattern("messages_*.properties");
 		}
 
 	}

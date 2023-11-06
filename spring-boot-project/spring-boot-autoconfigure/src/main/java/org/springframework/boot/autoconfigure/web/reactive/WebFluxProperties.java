@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@
 package org.springframework.boot.autoconfigure.web.reactive;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.DeprecatedConfigurationProperty;
 import org.springframework.util.StringUtils;
 
 /**
- * {@link ConfigurationProperties properties} for Spring WebFlux.
+ * {@link ConfigurationProperties Properties} for Spring WebFlux.
  *
  * @author Brian Clozel
+ * @author Vedran Pavic
  * @since 2.0.0
  */
 @ConfigurationProperties(prefix = "spring.webflux")
@@ -36,10 +36,17 @@ public class WebFluxProperties {
 
 	private final Format format = new Format();
 
+	private final Problemdetails problemdetails = new Problemdetails();
+
 	/**
 	 * Path pattern used for static resources.
 	 */
 	private String staticPathPattern = "/**";
+
+	/**
+	 * Path pattern used for WebJar assets.
+	 */
+	private String webjarsPathPattern = "/webjars/**";
 
 	public String getBasePath() {
 		return this.basePath;
@@ -50,7 +57,10 @@ public class WebFluxProperties {
 	}
 
 	private String cleanBasePath(String basePath) {
-		String candidate = StringUtils.trimWhitespace(basePath);
+		String candidate = null;
+		if (StringUtils.hasLength(basePath)) {
+			candidate = basePath.strip();
+		}
 		if (StringUtils.hasText(candidate)) {
 			if (!candidate.startsWith("/")) {
 				candidate = "/" + candidate;
@@ -62,19 +72,12 @@ public class WebFluxProperties {
 		return candidate;
 	}
 
-	@Deprecated
-	@DeprecatedConfigurationProperty(replacement = "spring.webflux.format.date")
-	public String getDateFormat() {
-		return this.format.getDate();
-	}
-
-	@Deprecated
-	public void setDateFormat(String dateFormat) {
-		this.format.setDate(dateFormat);
-	}
-
 	public Format getFormat() {
 		return this.format;
+	}
+
+	public Problemdetails getProblemdetails() {
+		return this.problemdetails;
 	}
 
 	public String getStaticPathPattern() {
@@ -85,20 +88,28 @@ public class WebFluxProperties {
 		this.staticPathPattern = staticPathPattern;
 	}
 
+	public String getWebjarsPathPattern() {
+		return this.webjarsPathPattern;
+	}
+
+	public void setWebjarsPathPattern(String webjarsPathPattern) {
+		this.webjarsPathPattern = webjarsPathPattern;
+	}
+
 	public static class Format {
 
 		/**
-		 * Date format to use, for example `dd/MM/yyyy`.
+		 * Date format to use, for example 'dd/MM/yyyy'.
 		 */
 		private String date;
 
 		/**
-		 * Time format to use, for example `HH:mm:ss`.
+		 * Time format to use, for example 'HH:mm:ss'.
 		 */
 		private String time;
 
 		/**
-		 * Date-time format to use, for example `yyyy-MM-dd HH:mm:ss`.
+		 * Date-time format to use, for example 'yyyy-MM-dd HH:mm:ss'.
 		 */
 		private String dateTime;
 
@@ -124,6 +135,23 @@ public class WebFluxProperties {
 
 		public void setDateTime(String dateTime) {
 			this.dateTime = dateTime;
+		}
+
+	}
+
+	public static class Problemdetails {
+
+		/**
+		 * Whether RFC 7807 Problem Details support should be enabled.
+		 */
+		private boolean enabled = false;
+
+		public boolean isEnabled() {
+			return this.enabled;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
 		}
 
 	}

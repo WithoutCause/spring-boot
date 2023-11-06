@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,18 @@ package org.springframework.boot.buildpack.platform.build;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 import java.util.function.Consumer;
+
+import com.sun.jna.Platform;
 
 import org.springframework.boot.buildpack.platform.docker.DockerApi;
 import org.springframework.boot.buildpack.platform.docker.LogUpdateEvent;
+import org.springframework.boot.buildpack.platform.docker.configuration.ResolvedDockerHost;
+import org.springframework.boot.buildpack.platform.docker.type.Binding;
 import org.springframework.boot.buildpack.platform.docker.type.ContainerConfig;
 import org.springframework.boot.buildpack.platform.docker.type.ContainerContent;
 import org.springframework.boot.buildpack.platform.docker.type.ContainerReference;
@@ -30,6 +38,7 @@ import org.springframework.boot.buildpack.platform.docker.type.ImageReference;
 import org.springframework.boot.buildpack.platform.docker.type.VolumeName;
 import org.springframework.boot.buildpack.platform.io.TarArchive;
 import org.springframework.util.Assert;
+import org.springframework.util.FileSystemUtils;
 
 /**
  * A buildpack lifecycle used to run the build {@link Phase phases} needed to package an
@@ -37,14 +46,26 @@ import org.springframework.util.Assert;
  *
  * @author Phillip Webb
  * @author Scott Frederick
+ * @author Jeroen Meijer
+ * @author Julian Liebig
  */
 class Lifecycle implements Closeable {
 
 	private static final LifecycleVersion LOGGING_MINIMUM_VERSION = LifecycleVersion.parse("0.0.5");
 
+	private static final String PLATFORM_API_VERSION_KEY = "CNB_PLATFORM_API";
+
+	private static final String SOURCE_DATE_EPOCH_KEY = "SOURCE_DATE_EPOCH";
+
+	private static final String DOMAIN_SOCKET_PATH = "/var/run/docker.sock";
+
+	private static final List<String> DEFAULT_SECURITY_OPTIONS = List.of("label=disable");
+
 	private final BuildLog log;
 
 	private final DockerApi docker;
+
+	private final ResolvedDockerHost dockerHost;
 
 	private final BuildRequest request;
 
@@ -54,13 +75,17 @@ class Lifecycle implements Closeable {
 
 	private final ApiVersion platformVersion;
 
-	private final VolumeName layersVolume;
+	private final Cache layers;
 
-	private final VolumeName applicationVolume;
+	private final Cache application;
 
-	private final VolumeName buildCacheVolume;
+	private final Cache buildCache;
 
-	private final VolumeName launchCacheVolume;
+	private final Cache launchCache;
+
+	private final String applicationDirectory;
+
+	private final List<String> securityOptions;
 
 	private boolean executed;
 
@@ -70,33 +95,59 @@ class Lifecycle implements Closeable {
 	 * Create a new {@link Lifecycle} instance.
 	 * @param log build output log
 	 * @param docker the Docker API
+	 * @param dockerHost the Docker host information
 	 * @param request the request to process
 	 * @param builder the ephemeral builder used to run the phases
 	 */
-	Lifecycle(BuildLog log, DockerApi docker, BuildRequest request, EphemeralBuilder builder) {
+	Lifecycle(BuildLog log, DockerApi docker, ResolvedDockerHost dockerHost, BuildRequest request,
+			EphemeralBuilder builder) {
 		this.log = log;
 		this.docker = docker;
+		this.dockerHost = dockerHost;
 		this.request = request;
 		this.builder = builder;
 		this.lifecycleVersion = LifecycleVersion.parse(builder.getBuilderMetadata().getLifecycle().getVersion());
-		this.platformVersion = ApiVersion.parse(builder.getBuilderMetadata().getLifecycle().getApi().getPlatform());
-		this.layersVolume = createRandomVolumeName("pack-layers-");
-		this.applicationVolume = createRandomVolumeName("pack-app-");
-		this.buildCacheVolume = createCacheVolumeName(request, ".build");
-		this.launchCacheVolume = createCacheVolumeName(request, ".launch");
-		checkPlatformVersion(this.platformVersion);
+		this.platformVersion = getPlatformVersion(builder.getBuilderMetadata().getLifecycle());
+		this.layers = getLayersBindingSource(request);
+		this.application = getApplicationBindingSource(request);
+		this.buildCache = getBuildCache(request);
+		this.launchCache = getLaunchCache(request);
+		this.applicationDirectory = getApplicationDirectory(request);
+		this.securityOptions = getSecurityOptions(request);
 	}
 
-	protected VolumeName createRandomVolumeName(String prefix) {
-		return VolumeName.random(prefix);
+	private Cache getBuildCache(BuildRequest request) {
+		if (request.getBuildCache() != null) {
+			return request.getBuildCache();
+		}
+		return createVolumeCache(request, "build");
 	}
 
-	private VolumeName createCacheVolumeName(BuildRequest request, String suffix) {
-		return VolumeName.basedOn(request.getName(), ImageReference::toLegacyString, "pack-cache-", suffix, 6);
+	private Cache getLaunchCache(BuildRequest request) {
+		if (request.getLaunchCache() != null) {
+			return request.getLaunchCache();
+		}
+		return createVolumeCache(request, "launch");
 	}
 
-	private void checkPlatformVersion(ApiVersion platformVersion) {
-		ApiVersions.SUPPORTED_PLATFORMS.assertSupports(platformVersion);
+	private String getApplicationDirectory(BuildRequest request) {
+		return (request.getApplicationDirectory() != null) ? request.getApplicationDirectory() : Directory.APPLICATION;
+	}
+
+	private List<String> getSecurityOptions(BuildRequest request) {
+		if (request.getSecurityOptions() != null) {
+			return request.getSecurityOptions();
+		}
+		return (Platform.isWindows()) ? Collections.emptyList() : DEFAULT_SECURITY_OPTIONS;
+	}
+
+	private ApiVersion getPlatformVersion(BuilderMetadata.Lifecycle lifecycle) {
+		if (lifecycle.getApis().getPlatform() != null) {
+			String[] supportedVersions = lifecycle.getApis().getPlatform();
+			return ApiVersions.SUPPORTED_PLATFORMS.findLatestSupported(supportedVersions);
+		}
+		String version = lifecycle.getApi().getPlatform();
+		return ApiVersions.SUPPORTED_PLATFORMS.findLatestSupported(version);
 	}
 
 	/**
@@ -106,9 +157,9 @@ class Lifecycle implements Closeable {
 	void execute() throws IOException {
 		Assert.state(!this.executed, "Lifecycle has already been executed");
 		this.executed = true;
-		this.log.executingLifecycle(this.request, this.lifecycleVersion, this.buildCacheVolume);
+		this.log.executingLifecycle(this.request, this.lifecycleVersion, this.buildCache);
 		if (this.request.isCleanCache()) {
-			deleteVolume(this.buildCacheVolume);
+			deleteCache(this.buildCache);
 		}
 		run(createPhase());
 		this.log.executedLifecycle(this.request);
@@ -117,8 +168,9 @@ class Lifecycle implements Closeable {
 	private Phase createPhase() {
 		Phase phase = new Phase("creator", isVerboseLogging());
 		phase.withDaemonAccess();
+		configureDaemonAccess(phase);
 		phase.withLogLevelArg();
-		phase.withArgs("-app", Directory.APPLICATION);
+		phase.withArgs("-app", this.applicationDirectory);
 		phase.withArgs("-platform", Directory.PLATFORM);
 		phase.withArgs("-run-image", this.request.getRunImage());
 		phase.withArgs("-layers", Directory.LAYERS);
@@ -128,16 +180,90 @@ class Lifecycle implements Closeable {
 		if (this.request.isCleanCache()) {
 			phase.withArgs("-skip-restore");
 		}
+		if (requiresProcessTypeDefault()) {
+			phase.withArgs("-process-type=web");
+		}
 		phase.withArgs(this.request.getName());
-		phase.withBinds(this.layersVolume, Directory.LAYERS);
-		phase.withBinds(this.applicationVolume, Directory.APPLICATION);
-		phase.withBinds(this.buildCacheVolume, Directory.CACHE);
-		phase.withBinds(this.launchCacheVolume, Directory.LAUNCH_CACHE);
+		phase.withBinding(Binding.from(getCacheBindingSource(this.layers), Directory.LAYERS));
+		phase.withBinding(Binding.from(getCacheBindingSource(this.application), this.applicationDirectory));
+		phase.withBinding(Binding.from(getCacheBindingSource(this.buildCache), Directory.CACHE));
+		phase.withBinding(Binding.from(getCacheBindingSource(this.launchCache), Directory.LAUNCH_CACHE));
+		if (this.request.getBindings() != null) {
+			this.request.getBindings().forEach(phase::withBinding);
+		}
+		phase.withEnv(PLATFORM_API_VERSION_KEY, this.platformVersion.toString());
+		if (this.request.getNetwork() != null) {
+			phase.withNetworkMode(this.request.getNetwork());
+		}
+		if (this.request.getCreatedDate() != null) {
+			phase.withEnv(SOURCE_DATE_EPOCH_KEY, Long.toString(this.request.getCreatedDate().getEpochSecond()));
+		}
 		return phase;
+	}
+
+	private Cache getLayersBindingSource(BuildRequest request) {
+		if (request.getBuildWorkspace() != null) {
+			return getBuildWorkspaceBindingSource(request.getBuildWorkspace(), "layers");
+		}
+		return createVolumeCache("pack-layers-");
+	}
+
+	private Cache getApplicationBindingSource(BuildRequest request) {
+		if (request.getBuildWorkspace() != null) {
+			return getBuildWorkspaceBindingSource(request.getBuildWorkspace(), "app");
+		}
+		return createVolumeCache("pack-app-");
+	}
+
+	private Cache getBuildWorkspaceBindingSource(Cache buildWorkspace, String suffix) {
+		return (buildWorkspace.getVolume() != null) ? Cache.volume(buildWorkspace.getVolume().getName() + "-" + suffix)
+				: Cache.bind(buildWorkspace.getBind().getSource() + "-" + suffix);
+	}
+
+	private String getCacheBindingSource(Cache cache) {
+		return (cache.getVolume() != null) ? cache.getVolume().getName() : cache.getBind().getSource();
+	}
+
+	private Cache createVolumeCache(String prefix) {
+		return Cache.volume(createRandomVolumeName(prefix));
+	}
+
+	private Cache createVolumeCache(BuildRequest request, String suffix) {
+		return Cache.volume(
+				VolumeName.basedOn(request.getName(), ImageReference::toLegacyString, "pack-cache-", "." + suffix, 6));
+	}
+
+	protected VolumeName createRandomVolumeName(String prefix) {
+		return VolumeName.random(prefix);
+	}
+
+	private void configureDaemonAccess(Phase phase) {
+		if (this.dockerHost != null) {
+			if (this.dockerHost.isRemote()) {
+				phase.withEnv("DOCKER_HOST", this.dockerHost.getAddress());
+				if (this.dockerHost.isSecure()) {
+					phase.withEnv("DOCKER_TLS_VERIFY", "1");
+					phase.withEnv("DOCKER_CERT_PATH", this.dockerHost.getCertificatePath());
+				}
+			}
+			else {
+				phase.withBinding(Binding.from(this.dockerHost.getAddress(), DOMAIN_SOCKET_PATH));
+			}
+		}
+		else {
+			phase.withBinding(Binding.from(DOMAIN_SOCKET_PATH, DOMAIN_SOCKET_PATH));
+		}
+		if (this.securityOptions != null) {
+			this.securityOptions.forEach(phase::withSecurityOption);
+		}
 	}
 
 	private boolean isVerboseLogging() {
 		return this.request.isVerboseLogging() && this.lifecycleVersion.isEqualOrGreaterThan(LOGGING_MINIMUM_VERSION);
+	}
+
+	private boolean requiresProcessTypeDefault() {
+		return this.platformVersion.supportsAny(ApiVersion.of(0, 4), ApiVersion.of(0, 5));
 	}
 
 	private void run(Phase phase) throws IOException {
@@ -162,9 +288,12 @@ class Lifecycle implements Closeable {
 			return this.docker.container().create(config);
 		}
 		try {
+			if (this.application.getBind() != null) {
+				Files.createDirectories(Path.of(this.application.getBind().getSource()));
+			}
 			TarArchive applicationContent = this.request.getApplicationContent(this.builder.getBuildOwner());
-			return this.docker.container().create(config,
-					ContainerContent.of(applicationContent, Directory.APPLICATION));
+			return this.docker.container()
+				.create(config, ContainerContent.of(applicationContent, this.applicationDirectory));
 		}
 		finally {
 			this.applicationVolumePopulated = true;
@@ -173,12 +302,30 @@ class Lifecycle implements Closeable {
 
 	@Override
 	public void close() throws IOException {
-		deleteVolume(this.layersVolume);
-		deleteVolume(this.applicationVolume);
+		deleteCache(this.layers);
+		deleteCache(this.application);
+	}
+
+	private void deleteCache(Cache cache) throws IOException {
+		if (cache.getVolume() != null) {
+			deleteVolume(cache.getVolume().getVolumeName());
+		}
+		if (cache.getBind() != null) {
+			deleteBind(cache.getBind().getSource());
+		}
 	}
 
 	private void deleteVolume(VolumeName name) throws IOException {
 		this.docker.volume().delete(name, true);
+	}
+
+	private void deleteBind(String source) {
+		try {
+			FileSystemUtils.deleteRecursively(Path.of(source));
+		}
+		catch (IOException ex) {
+			throw new IllegalStateException("Error cleaning bind mount directory '" + source + "'", ex);
+		}
 	}
 
 	/**

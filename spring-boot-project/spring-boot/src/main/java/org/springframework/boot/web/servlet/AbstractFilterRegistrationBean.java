@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-import javax.servlet.DispatcherType;
-import javax.servlet.Filter;
-import javax.servlet.FilterRegistration;
-import javax.servlet.FilterRegistration.Dynamic;
-import javax.servlet.ServletContext;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterRegistration;
+import jakarta.servlet.FilterRegistration.Dynamic;
+import jakarta.servlet.ServletContext;
 
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
@@ -159,6 +159,28 @@ public abstract class AbstractFilterRegistrationBean<T extends Filter> extends D
 	}
 
 	/**
+	 * Determines the {@link DispatcherType dispatcher types} for which the filter should
+	 * be registered. Applies defaults based on the type of filter being registered if
+	 * none have been configured. Modifications to the returned {@link EnumSet} will have
+	 * no effect on the registration.
+	 * @return the dispatcher types, never {@code null}
+	 * @since 3.2.0
+	 */
+	public EnumSet<DispatcherType> determineDispatcherTypes() {
+		if (this.dispatcherTypes == null) {
+			T filter = getFilter();
+			if (ClassUtils.isPresent("org.springframework.web.filter.OncePerRequestFilter",
+					filter.getClass().getClassLoader()) && filter instanceof OncePerRequestFilter) {
+				return EnumSet.allOf(DispatcherType.class);
+			}
+			else {
+				return EnumSet.of(DispatcherType.REQUEST);
+			}
+		}
+		return EnumSet.copyOf(this.dispatcherTypes);
+	}
+
+	/**
 	 * Convenience method to {@link #setDispatcherTypes(EnumSet) set dispatcher types}
 	 * using the specified elements.
 	 * @param first the first dispatcher type
@@ -169,9 +191,7 @@ public abstract class AbstractFilterRegistrationBean<T extends Filter> extends D
 	}
 
 	/**
-	 * Sets the dispatcher types that should be used with the registration. If not
-	 * specified the types will be deduced based on the value of
-	 * {@link #isAsyncSupported()}.
+	 * Sets the dispatcher types that should be used with the registration.
 	 * @param dispatcherTypes the dispatcher types
 	 */
 	public void setDispatcherTypes(EnumSet<DispatcherType> dispatcherTypes) {
@@ -218,17 +238,7 @@ public abstract class AbstractFilterRegistrationBean<T extends Filter> extends D
 	@Override
 	protected void configure(FilterRegistration.Dynamic registration) {
 		super.configure(registration);
-		EnumSet<DispatcherType> dispatcherTypes = this.dispatcherTypes;
-		if (dispatcherTypes == null) {
-			T filter = getFilter();
-			if (ClassUtils.isPresent("org.springframework.web.filter.OncePerRequestFilter",
-					filter.getClass().getClassLoader()) && filter instanceof OncePerRequestFilter) {
-				dispatcherTypes = EnumSet.allOf(DispatcherType.class);
-			}
-			else {
-				dispatcherTypes = EnumSet.of(DispatcherType.REQUEST);
-			}
-		}
+		EnumSet<DispatcherType> dispatcherTypes = determineDispatcherTypes();
 		Set<String> servletNames = new LinkedHashSet<>();
 		for (ServletRegistrationBean<?> servletRegistrationBean : this.servletRegistrationBeans) {
 			servletNames.add(servletRegistrationBean.getServletName());
@@ -254,6 +264,15 @@ public abstract class AbstractFilterRegistrationBean<T extends Filter> extends D
 	 * @return the filter
 	 */
 	public abstract T getFilter();
+
+	/**
+	 * Returns the filter name that will be registered.
+	 * @return the filter name
+	 * @since 3.2.0
+	 */
+	public String getFilterName() {
+		return getOrDeduceName(getFilter());
+	}
 
 	@Override
 	public String toString() {

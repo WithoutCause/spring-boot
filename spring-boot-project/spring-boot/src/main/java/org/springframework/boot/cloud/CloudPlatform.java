@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,9 @@
 
 package org.springframework.boot.cloud;
 
+import java.util.Arrays;
+import java.util.List;
+
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.EnumerablePropertySource;
@@ -29,6 +32,7 @@ import org.springframework.core.env.StandardEnvironment;
  *
  * @author Phillip Webb
  * @author Brian Clozel
+ * @author Nguyen Sach
  * @since 1.3.0
  */
 public enum CloudPlatform {
@@ -82,6 +86,19 @@ public enum CloudPlatform {
 	},
 
 	/**
+	 * Nomad platform.
+	 * @since 3.1.0
+	 */
+	NOMAD {
+
+		@Override
+		public boolean isDetected(Environment environment) {
+			return environment.containsProperty("NOMAD_ALLOC_ID");
+		}
+
+	},
+
+	/**
 	 * Kubernetes platform.
 	 */
 	KUBERNETES {
@@ -96,15 +113,15 @@ public enum CloudPlatform {
 
 		@Override
 		public boolean isDetected(Environment environment) {
-			if (environment instanceof ConfigurableEnvironment) {
-				return isAutoDetected((ConfigurableEnvironment) environment);
+			if (environment instanceof ConfigurableEnvironment configurableEnvironment) {
+				return isAutoDetected(configurableEnvironment);
 			}
 			return false;
 		}
 
 		private boolean isAutoDetected(ConfigurableEnvironment environment) {
 			PropertySource<?> environmentPropertySource = environment.getPropertySources()
-					.get(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+				.get(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
 			if (environmentPropertySource != null) {
 				if (environmentPropertySource.containsProperty(KUBERNETES_SERVICE_HOST)
 						&& environmentPropertySource.containsProperty(KUBERNETES_SERVICE_PORT)) {
@@ -130,6 +147,21 @@ public enum CloudPlatform {
 			return false;
 		}
 
+	},
+
+	/**
+	 * Azure App Service platform.
+	 */
+	AZURE_APP_SERVICE {
+
+		private final List<String> azureEnvVariables = Arrays.asList("WEBSITE_SITE_NAME", "WEBSITE_INSTANCE_ID",
+				"WEBSITE_RESOURCE_GROUP", "WEBSITE_SKU");
+
+		@Override
+		public boolean isDetected(Environment environment) {
+			return this.azureEnvVariables.stream().allMatch(environment::containsProperty);
+		}
+
 	};
 
 	private static final String PROPERTY_NAME = "spring.main.cloud-platform";
@@ -140,7 +172,8 @@ public enum CloudPlatform {
 	 * @return if the platform is active.
 	 */
 	public boolean isActive(Environment environment) {
-		return isEnforced(environment) || isDetected(environment);
+		String platformProperty = environment.getProperty(PROPERTY_NAME);
+		return isEnforced(platformProperty) || (platformProperty == null && isDetected(environment));
 	}
 
 	/**

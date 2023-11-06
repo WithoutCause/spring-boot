@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,16 @@
 
 package org.springframework.boot.context.config;
 
-import java.util.Set;
+import java.util.Collections;
 import java.util.function.Supplier;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.MockitoAnnotations;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
 import org.mockito.Spy;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.boot.DefaultBootstrapContext;
 import org.springframework.boot.SpringApplication;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -33,56 +33,41 @@ import org.springframework.core.io.ResourceLoader;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.assertArg;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willReturn;
-import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * Tests for {@link ConfigDataEnvironmentPostProcessor}.
  *
  * @author Phillip Webb
  * @author Madhura Bhave
+ * @author Nguyen Bao Sach
  */
+@ExtendWith(MockitoExtension.class)
 class ConfigDataEnvironmentPostProcessorTests {
 
-	private ConfigDataEnvironment configDataEnvironment = mock(ConfigDataEnvironment.class);
+	private final StandardEnvironment environment = new StandardEnvironment();
 
-	private StandardEnvironment environment;
+	private final SpringApplication application = new SpringApplication();
 
-	private SpringApplication application;
+	@Mock
+	private ConfigDataEnvironment configDataEnvironment;
 
 	@Spy
-	private ConfigDataEnvironmentPostProcessor postProcessor = new ConfigDataEnvironmentPostProcessor(Supplier::get);
-
-	@Captor
-	private ArgumentCaptor<Set<String>> additionalProfilesCaptor;
-
-	@Captor
-	private ArgumentCaptor<ResourceLoader> resourceLoaderCaptor;
-
-	@BeforeEach
-	void setup() {
-		MockitoAnnotations.initMocks(this);
-		this.application = new SpringApplication();
-		this.environment = new StandardEnvironment();
-	}
-
-	@Test
-	@SuppressWarnings("deprecation")
-	void defaultOrderMatchesDeprecatedListener() {
-		assertThat(ConfigDataEnvironmentPostProcessor.ORDER).isEqualTo(ConfigFileApplicationListener.DEFAULT_ORDER);
-	}
+	private ConfigDataEnvironmentPostProcessor postProcessor = new ConfigDataEnvironmentPostProcessor(Supplier::get,
+			new DefaultBootstrapContext());
 
 	@Test
 	void postProcessEnvironmentWhenNoLoaderCreatesDefaultLoaderInstance() {
 		willReturn(this.configDataEnvironment).given(this.postProcessor).getConfigDataEnvironment(any(), any(), any());
 		this.postProcessor.postProcessEnvironment(this.environment, this.application);
-		verify(this.postProcessor).getConfigDataEnvironment(any(), this.resourceLoaderCaptor.capture(), any());
-		verify(this.configDataEnvironment).processAndApply();
-		assertThat(this.resourceLoaderCaptor.getValue()).isInstanceOf(DefaultResourceLoader.class);
+		then(this.postProcessor).should()
+			.getConfigDataEnvironment(any(),
+					assertArg((resourceLoader) -> assertThat(resourceLoader).isInstanceOf(DefaultResourceLoader.class)),
+					any());
+		then(this.configDataEnvironment).should().processAndApply();
 	}
 
 	@Test
@@ -91,9 +76,10 @@ class ConfigDataEnvironmentPostProcessorTests {
 		this.application.setResourceLoader(resourceLoader);
 		willReturn(this.configDataEnvironment).given(this.postProcessor).getConfigDataEnvironment(any(), any(), any());
 		this.postProcessor.postProcessEnvironment(this.environment, this.application);
-		verify(this.postProcessor).getConfigDataEnvironment(any(), this.resourceLoaderCaptor.capture(), any());
-		verify(this.configDataEnvironment).processAndApply();
-		assertThat(this.resourceLoaderCaptor.getValue()).isSameAs(resourceLoader);
+		then(this.postProcessor).should()
+			.getConfigDataEnvironment(any(),
+					assertArg((resourceLoaderB) -> assertThat(resourceLoaderB).isSameAs(resourceLoader)), any());
+		then(this.configDataEnvironment).should().processAndApply();
 	}
 
 	@Test
@@ -101,21 +87,38 @@ class ConfigDataEnvironmentPostProcessorTests {
 		this.application.setAdditionalProfiles("dev");
 		willReturn(this.configDataEnvironment).given(this.postProcessor).getConfigDataEnvironment(any(), any(), any());
 		this.postProcessor.postProcessEnvironment(this.environment, this.application);
-		verify(this.postProcessor).getConfigDataEnvironment(any(), any(), this.additionalProfilesCaptor.capture());
-		verify(this.configDataEnvironment).processAndApply();
-		assertThat(this.additionalProfilesCaptor.getValue()).containsExactly("dev");
+		then(this.postProcessor).should()
+			.getConfigDataEnvironment(any(), any(),
+					assertArg((additionalProperties) -> assertThat(additionalProperties).containsExactly("dev")));
+		then(this.configDataEnvironment).should().processAndApply();
 	}
 
 	@Test
-	void postProcessEnvironmentWhenUseLegacyProcessingSwitchesToLegacyMethod() {
-		ConfigDataEnvironmentPostProcessor.LegacyConfigFileApplicationListener legacyListener = mock(
-				ConfigDataEnvironmentPostProcessor.LegacyConfigFileApplicationListener.class);
-		willThrow(new UseLegacyConfigProcessingException(null)).given(this.postProcessor)
-				.getConfigDataEnvironment(any(), any(), any());
-		willReturn(legacyListener).given(this.postProcessor).getLegacyListener();
+	void postProcessEnvironmentWhenNoActiveProfiles() {
+		willReturn(this.configDataEnvironment).given(this.postProcessor).getConfigDataEnvironment(any(), any(), any());
 		this.postProcessor.postProcessEnvironment(this.environment, this.application);
-		verifyNoInteractions(this.configDataEnvironment);
-		verify(legacyListener).addPropertySources(eq(this.environment), any(DefaultResourceLoader.class));
+		then(this.postProcessor).should().getConfigDataEnvironment(any(), any(ResourceLoader.class), any());
+		then(this.configDataEnvironment).should().processAndApply();
+		assertThat(this.environment.getActiveProfiles()).isEmpty();
+	}
+
+	@Test
+	void applyToAppliesPostProcessing() {
+		int before = this.environment.getPropertySources().size();
+		TestConfigDataEnvironmentUpdateListener listener = new TestConfigDataEnvironmentUpdateListener();
+		ConfigDataEnvironmentPostProcessor.applyTo(this.environment, null, null, Collections.singleton("dev"),
+				listener);
+		assertThat(this.environment.getPropertySources()).hasSizeGreaterThan(before);
+		assertThat(this.environment.getActiveProfiles()).containsExactly("dev");
+		assertThat(listener.getAddedPropertySources()).isNotEmpty();
+		assertThat(listener.getProfiles().getActive()).containsExactly("dev");
+		assertThat(listener.getAddedPropertySources().stream().anyMatch((added) -> hasDevProfile(added.getResource())))
+			.isTrue();
+	}
+
+	private boolean hasDevProfile(ConfigDataResource resource) {
+		return (resource instanceof StandardConfigDataResource standardResource)
+				&& "dev".equals(standardResource.getProfile());
 	}
 
 }

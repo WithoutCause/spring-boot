@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 
 package org.springframework.boot.autoconfigure.data.r2dbc;
+
+import java.time.Duration;
 
 import io.r2dbc.spi.ConnectionFactory;
 import org.junit.jupiter.api.Test;
@@ -49,55 +51,64 @@ import static org.assertj.core.api.Assertions.assertThat;
 class R2dbcRepositoriesAutoConfigurationTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(R2dbcRepositoriesAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(R2dbcRepositoriesAutoConfiguration.class));
 
 	@Test
 	void backsOffWithNoConnectionFactory() {
 		this.contextRunner.withUserConfiguration(TestConfiguration.class)
-				.run((context) -> assertThat(context).doesNotHaveBean(R2dbcRepositoryConfigurationExtension.class));
+			.run((context) -> assertThat(context).doesNotHaveBean(R2dbcRepositoryConfigurationExtension.class));
 	}
 
 	@Test
 	void backsOffWithNoDatabaseClientOperations() {
 		this.contextRunner.withConfiguration(AutoConfigurations.of(R2dbcAutoConfiguration.class))
-				.withClassLoader(new FilteredClassLoader("org.springframework.r2dbc"))
-				.withUserConfiguration(TestConfiguration.class).run((context) -> {
-					assertThat(context).doesNotHaveBean(DatabaseClient.class);
-					assertThat(context).doesNotHaveBean(R2dbcRepositoryConfigurationExtension.class);
-				});
+			.withClassLoader(new FilteredClassLoader("org.springframework.r2dbc"))
+			.withUserConfiguration(TestConfiguration.class)
+			.run((context) -> {
+				assertThat(context).doesNotHaveBean(DatabaseClient.class);
+				assertThat(context).doesNotHaveBean(R2dbcRepositoryConfigurationExtension.class);
+			});
 	}
 
 	@Test
 	void basicAutoConfiguration() {
 		this.contextRunner
-				.withConfiguration(
-						AutoConfigurations.of(R2dbcAutoConfiguration.class, R2dbcDataAutoConfiguration.class))
-				.withUserConfiguration(DatabaseInitializationConfiguration.class, TestConfiguration.class)
-				.withPropertyValues("spring.r2dbc.generate-unique-name:true").run((context) -> {
-					assertThat(context).hasSingleBean(CityRepository.class);
-					context.getBean(CityRepository.class).findById(2000L).as(StepVerifier::create).expectNextCount(1)
-							.verifyComplete();
-				});
+			.withConfiguration(AutoConfigurations.of(R2dbcAutoConfiguration.class, R2dbcDataAutoConfiguration.class))
+			.withUserConfiguration(DatabaseInitializationConfiguration.class, TestConfiguration.class)
+			.withPropertyValues("spring.r2dbc.generate-unique-name:true")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(CityRepository.class);
+				context.getBean(CityRepository.class)
+					.findById(2000L)
+					.as(StepVerifier::create)
+					.expectNextCount(1)
+					.expectComplete()
+					.verify(Duration.ofSeconds(30));
+			});
 	}
 
 	@Test
 	void autoConfigurationWithNoRepositories() {
 		this.contextRunner.withConfiguration(AutoConfigurations.of(R2dbcAutoConfiguration.class))
-				.withUserConfiguration(EmptyConfiguration.class)
-				.run((context) -> assertThat(context).doesNotHaveBean(Repository.class));
+			.withUserConfiguration(EmptyConfiguration.class)
+			.run((context) -> assertThat(context).doesNotHaveBean(Repository.class));
 	}
 
 	@Test
 	void honorsUsersEnableR2dbcRepositoriesConfiguration() {
 		this.contextRunner
-				.withConfiguration(
-						AutoConfigurations.of(R2dbcAutoConfiguration.class, R2dbcDataAutoConfiguration.class))
-				.withUserConfiguration(DatabaseInitializationConfiguration.class, EnableRepositoriesConfiguration.class)
-				.withPropertyValues("spring.r2dbc.generate-unique-name:true").run((context) -> {
-					assertThat(context).hasSingleBean(CityRepository.class);
-					context.getBean(CityRepository.class).findById(2000L).as(StepVerifier::create).expectNextCount(1)
-							.verifyComplete();
-				});
+			.withConfiguration(AutoConfigurations.of(R2dbcAutoConfiguration.class, R2dbcDataAutoConfiguration.class))
+			.withUserConfiguration(DatabaseInitializationConfiguration.class, EnableRepositoriesConfiguration.class)
+			.withPropertyValues("spring.r2dbc.generate-unique-name:true")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(CityRepository.class);
+				context.getBean(CityRepository.class)
+					.findById(2000L)
+					.as(StepVerifier::create)
+					.expectNextCount(1)
+					.expectComplete()
+					.verify(Duration.ofSeconds(30));
+			});
 	}
 
 	@Configuration(proxyBeanMethods = false)

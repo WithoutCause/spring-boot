@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,21 +35,21 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
  * @author Oliver Gierke
  */
 @SuppressWarnings("resource")
-public class AutoConfigurationPackagesTests {
+class AutoConfigurationPackagesTests {
 
 	@Test
 	void setAndGet() {
 		AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(
 				ConfigWithAutoConfigurationPackage.class);
 		assertThat(AutoConfigurationPackages.get(context.getBeanFactory()))
-				.containsExactly(getClass().getPackage().getName());
+			.containsExactly(getClass().getPackage().getName());
 	}
 
 	@Test
 	void getWithoutSet() {
 		AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(EmptyConfig.class);
 		assertThatIllegalStateException().isThrownBy(() -> AutoConfigurationPackages.get(context.getBeanFactory()))
-				.withMessageContaining("Unable to retrieve @EnableAutoConfiguration base packages");
+			.withMessageContaining("Unable to retrieve @EnableAutoConfiguration base packages");
 	}
 
 	@Test

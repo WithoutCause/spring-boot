@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,9 +36,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 
 /**
  * Tests for {@link Neo4jHealthIndicator}.
@@ -51,8 +51,8 @@ class Neo4jHealthIndicatorTests {
 
 	@Test
 	void neo4jIsUp() {
-		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("4711", "My Home", "test");
-		Driver driver = mockDriver(resultSummary, "ultimate collectors edition");
+		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("My Home", "test");
+		Driver driver = mockDriver(resultSummary, "4711", "ultimate collectors edition");
 		Health health = new Neo4jHealthIndicator(driver).health();
 		assertThat(health.getStatus()).isEqualTo(Status.UP);
 		assertThat(health.getDetails()).containsEntry("server", "4711@My Home");
@@ -62,8 +62,8 @@ class Neo4jHealthIndicatorTests {
 
 	@Test
 	void neo4jIsUpWithoutDatabaseName() {
-		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("4711", "My Home", null);
-		Driver driver = mockDriver(resultSummary, "some edition");
+		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("My Home", null);
+		Driver driver = mockDriver(resultSummary, "4711", "some edition");
 		Health health = new Neo4jHealthIndicator(driver).health();
 		assertThat(health.getStatus()).isEqualTo(Status.UP);
 		assertThat(health.getDetails()).containsEntry("server", "4711@My Home");
@@ -73,8 +73,8 @@ class Neo4jHealthIndicatorTests {
 
 	@Test
 	void neo4jIsUpWithEmptyDatabaseName() {
-		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("4711", "My Home", "");
-		Driver driver = mockDriver(resultSummary, "some edition");
+		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("My Home", "");
+		Driver driver = mockDriver(resultSummary, "4711", "some edition");
 		Health health = new Neo4jHealthIndicator(driver).health();
 		assertThat(health.getStatus()).isEqualTo(Status.UP);
 		assertThat(health.getDetails()).containsEntry("server", "4711@My Home");
@@ -84,10 +84,10 @@ class Neo4jHealthIndicatorTests {
 
 	@Test
 	void neo4jIsUpWithOneSessionExpiredException() {
-		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("4711", "My Home", "");
+		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("My Home", "");
 		Session session = mock(Session.class);
-		Result statementResult = mockStatementResult(resultSummary, "some edition");
-		AtomicInteger count = new AtomicInteger(0);
+		Result statementResult = mockStatementResult(resultSummary, "4711", "some edition");
+		AtomicInteger count = new AtomicInteger();
 		given(session.run(anyString())).will((invocation) -> {
 			if (count.compareAndSet(0, 1)) {
 				throw new SessionExpiredException("Session expired");
@@ -100,7 +100,7 @@ class Neo4jHealthIndicatorTests {
 		Health health = healthIndicator.health();
 		assertThat(health.getStatus()).isEqualTo(Status.UP);
 		assertThat(health.getDetails()).containsEntry("server", "4711@My Home");
-		verify(session, times(2)).close();
+		then(session).should(times(2)).close();
 	}
 
 	@Test
@@ -112,17 +112,18 @@ class Neo4jHealthIndicatorTests {
 		assertThat(health.getDetails()).containsKeys("error");
 	}
 
-	private Result mockStatementResult(ResultSummary resultSummary, String edition) {
+	private Result mockStatementResult(ResultSummary resultSummary, String version, String edition) {
 		Record record = mock(Record.class);
 		given(record.get("edition")).willReturn(Values.value(edition));
+		given(record.get("version")).willReturn(Values.value(version));
 		Result statementResult = mock(Result.class);
 		given(statementResult.single()).willReturn(record);
 		given(statementResult.consume()).willReturn(resultSummary);
 		return statementResult;
 	}
 
-	private Driver mockDriver(ResultSummary resultSummary, String edition) {
-		Result statementResult = mockStatementResult(resultSummary, edition);
+	private Driver mockDriver(ResultSummary resultSummary, String version, String edition) {
+		Result statementResult = mockStatementResult(resultSummary, version, edition);
 		Session session = mock(Session.class);
 		given(session.run(anyString())).willReturn(statementResult);
 		Driver driver = mock(Driver.class);

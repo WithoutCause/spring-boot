@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,13 @@
 
 package org.springframework.boot.availability;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationListener;
 import org.springframework.util.Assert;
 
@@ -34,7 +38,17 @@ import org.springframework.util.Assert;
 public class ApplicationAvailabilityBean
 		implements ApplicationAvailability, ApplicationListener<AvailabilityChangeEvent<?>> {
 
-	private final Map<Class<? extends AvailabilityState>, AvailabilityChangeEvent<?>> events = new HashMap<>();
+	private final Map<Class<? extends AvailabilityState>, AvailabilityChangeEvent<?>> events = new ConcurrentHashMap<>();
+
+	private final Log logger;
+
+	public ApplicationAvailabilityBean() {
+		this(LogFactory.getLog(ApplicationAvailabilityBean.class));
+	}
+
+	ApplicationAvailabilityBean(Log logger) {
+		this.logger = logger;
+	}
 
 	@Override
 	public <S extends AvailabilityState> S getState(Class<S> stateType, S defaultState) {
@@ -58,16 +72,34 @@ public class ApplicationAvailabilityBean
 
 	@Override
 	public void onApplicationEvent(AvailabilityChangeEvent<?> event) {
-		Class<? extends AvailabilityState> stateType = getStateType(event.getState());
-		this.events.put(stateType, event);
+		Class<? extends AvailabilityState> type = getStateType(event.getState());
+		if (this.logger.isDebugEnabled()) {
+			this.logger.debug(getLogMessage(type, event));
+		}
+		this.events.put(type, event);
+	}
+
+	private <S extends AvailabilityState> Object getLogMessage(Class<S> type, AvailabilityChangeEvent<?> event) {
+		AvailabilityChangeEvent<S> lastChangeEvent = getLastChangeEvent(type);
+		StringBuilder message = new StringBuilder(
+				"Application availability state " + type.getSimpleName() + " changed");
+		message.append((lastChangeEvent != null) ? " from " + lastChangeEvent.getState() : "");
+		message.append(" to " + event.getState());
+		message.append(getSourceDescription(event.getSource()));
+		return message;
+	}
+
+	private String getSourceDescription(Object source) {
+		if (source == null || source instanceof ApplicationEventPublisher) {
+			return "";
+		}
+		return ": " + ((source instanceof Throwable) ? source : source.getClass().getName());
 	}
 
 	@SuppressWarnings("unchecked")
 	private Class<? extends AvailabilityState> getStateType(AvailabilityState state) {
-		if (state instanceof Enum) {
-			return (Class<? extends AvailabilityState>) ((Enum<?>) state).getDeclaringClass();
-		}
-		return state.getClass();
+		Class<?> type = (state instanceof Enum) ? ((Enum<?>) state).getDeclaringClass() : state.getClass();
+		return (Class<? extends AvailabilityState>) type;
 	}
 
 }

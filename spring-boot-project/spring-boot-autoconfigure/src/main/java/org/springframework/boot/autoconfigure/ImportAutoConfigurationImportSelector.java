@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,13 +25,15 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.boot.context.annotation.DeterminableImports;
+import org.springframework.boot.context.annotation.ImportCandidates;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.annotation.AnnotationUtils;
-import org.springframework.core.io.support.SpringFactoriesLoader;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.LinkedMultiValueMap;
@@ -44,8 +46,12 @@ import org.springframework.util.ObjectUtils;
  *
  * @author Phillip Webb
  * @author Andy Wilkinson
+ * @author Moritz Halbritter
+ * @author Scott Frederick
  */
 class ImportAutoConfigurationImportSelector extends AutoConfigurationImportSelector implements DeterminableImports {
+
+	private static final String OPTIONAL_PREFIX = "optional:";
 
 	private static final Set<String> ANNOTATION_NAMES;
 
@@ -90,17 +96,30 @@ class ImportAutoConfigurationImportSelector extends AutoConfigurationImportSelec
 		if (classes.length > 0) {
 			return Arrays.asList(classes);
 		}
-		return loadFactoryNames(source);
+		return loadFactoryNames(source).stream().map(this::mapFactoryName).filter(Objects::nonNull).toList();
+	}
+
+	private String mapFactoryName(String name) {
+		if (!name.startsWith(OPTIONAL_PREFIX)) {
+			return name;
+		}
+		name = name.substring(OPTIONAL_PREFIX.length());
+		return (!present(name)) ? null : name;
+	}
+
+	private boolean present(String className) {
+		String resourcePath = ClassUtils.convertClassNameToResourcePath(className) + ".class";
+		return new ClassPathResource(resourcePath).exists();
 	}
 
 	protected Collection<String> loadFactoryNames(Class<?> source) {
-		return SpringFactoriesLoader.loadFactoryNames(source, getClass().getClassLoader());
+		return ImportCandidates.load(source, getBeanClassLoader()).getCandidates();
 	}
 
 	@Override
 	protected Set<String> getExclusions(AnnotationMetadata metadata, AnnotationAttributes attributes) {
 		Set<String> exclusions = new LinkedHashSet<>();
-		Class<?> source = ClassUtils.resolveClassName(metadata.getClassName(), null);
+		Class<?> source = ClassUtils.resolveClassName(metadata.getClassName(), getBeanClassLoader());
 		for (String annotationName : ANNOTATION_NAMES) {
 			AnnotationAttributes merged = AnnotatedElementUtils.getMergedAnnotationAttributes(source, annotationName);
 			Class<?>[] exclude = (merged != null) ? merged.getClassArray("exclude") : null;
@@ -124,7 +143,7 @@ class ImportAutoConfigurationImportSelector extends AutoConfigurationImportSelec
 
 	protected final Map<Class<?>, List<Annotation>> getAnnotations(AnnotationMetadata metadata) {
 		MultiValueMap<Class<?>, Annotation> annotations = new LinkedMultiValueMap<>();
-		Class<?> source = ClassUtils.resolveClassName(metadata.getClassName(), null);
+		Class<?> source = ClassUtils.resolveClassName(metadata.getClassName(), getBeanClassLoader());
 		collectAnnotations(source, annotations, new HashSet<>());
 		return Collections.unmodifiableMap(annotations);
 	}

@@ -16,16 +16,14 @@
 
 package org.springframework.boot.test.context;
 
-import java.util.function.Supplier;
-
+import org.springframework.boot.DefaultBootstrapContext;
+import org.springframework.boot.DefaultPropertiesPropertySource;
 import org.springframework.boot.context.config.ConfigData;
 import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
-import org.springframework.boot.env.DefaultPropertiesPropertySource;
 import org.springframework.boot.env.RandomValuePropertySource;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.test.context.ContextConfiguration;
 
 /**
@@ -44,20 +42,10 @@ public class ConfigDataApplicationContextInitializer
 	public void initialize(ConfigurableApplicationContext applicationContext) {
 		ConfigurableEnvironment environment = applicationContext.getEnvironment();
 		RandomValuePropertySource.addToEnvironment(environment);
-		new ConfigDataProcessor().addPropertySources(environment, applicationContext);
+		DefaultBootstrapContext bootstrapContext = new DefaultBootstrapContext();
+		ConfigDataEnvironmentPostProcessor.applyTo(environment, applicationContext, bootstrapContext);
+		bootstrapContext.close(applicationContext);
 		DefaultPropertiesPropertySource.moveToEnd(environment);
-	}
-
-	private static class ConfigDataProcessor extends ConfigDataEnvironmentPostProcessor {
-
-		ConfigDataProcessor() {
-			super(Supplier::get);
-		}
-
-		void addPropertySources(ConfigurableEnvironment environment, ResourceLoader resourceLoader) {
-			addPropertySources(environment, resourceLoader, null);
-		}
-
 	}
 
 }

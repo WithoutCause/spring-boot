@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.springframework.boot.buildpack.platform.docker.type;
 
 import java.io.File;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -28,12 +29,11 @@ import org.springframework.util.ObjectUtils;
  *
  * @author Phillip Webb
  * @author Scott Frederick
+ * @author Moritz Halbritter
  * @since 2.3.0
  * @see ImageName
  */
 public final class ImageReference {
-
-	private static final Pattern PATTERN = Regex.IMAGE_REFERENCE.compile();
 
 	private static final Pattern JAR_VERSION_PATTERN = Pattern.compile("^(.*)(\\-\\d+)$");
 
@@ -156,8 +156,20 @@ public final class ImageReference {
 	}
 
 	/**
+	 * Return an {@link ImageReference} without the tag.
+	 * @return the image reference in tagless form
+	 * @since 2.7.12
+	 */
+	public ImageReference inTaglessForm() {
+		if (this.tag == null) {
+			return this;
+		}
+		return new ImageReference(this.name, null, this.digest);
+	}
+
+	/**
 	 * Return an {@link ImageReference} containing either a tag or a digest. If neither
-	 * the digest or the tag has been defined then tag {@code latest} is used.
+	 * the digest nor the tag has been defined then tag {@code latest} is used.
 	 * @return the image reference in tagged or digest form
 	 */
 	public ImageReference inTaggedOrDigestForm() {
@@ -225,13 +237,45 @@ public final class ImageReference {
 	 */
 	public static ImageReference of(String value) {
 		Assert.hasText(value, "Value must not be null");
-		Matcher matcher = PATTERN.matcher(value);
-		Assert.isTrue(matcher.matches(),
+		String domain = ImageName.parseDomain(value);
+		String path = (domain != null) ? value.substring(domain.length() + 1) : value;
+		String digest = null;
+		int digestSplit = path.indexOf("@");
+		if (digestSplit != -1) {
+			String remainder = path.substring(digestSplit + 1);
+			Matcher matcher = Regex.DIGEST.matcher(remainder);
+			if (matcher.find()) {
+				digest = remainder.substring(0, matcher.end());
+				remainder = remainder.substring(matcher.end());
+				path = path.substring(0, digestSplit) + remainder;
+			}
+		}
+		String tag = null;
+		int tagSplit = path.lastIndexOf(":");
+		if (tagSplit != -1) {
+			String remainder = path.substring(tagSplit + 1);
+			Matcher matcher = Regex.TAG.matcher(remainder);
+			if (matcher.find()) {
+				tag = remainder.substring(0, matcher.end());
+				remainder = remainder.substring(matcher.end());
+				path = path.substring(0, tagSplit) + remainder;
+			}
+		}
+
+		Assert.isTrue(isLowerCase(path) && matchesPathRegex(path),
 				() -> "Unable to parse image reference \"" + value + "\". "
 						+ "Image reference must be in the form '[domainHost:port/][path/]name[:tag][@digest]', "
 						+ "with 'path' and 'name' containing only [a-z0-9][.][_][-]");
-		ImageName name = new ImageName(matcher.group("domain"), matcher.group("path"));
-		return new ImageReference(name, matcher.group("tag"), matcher.group("digest"));
+		ImageName name = new ImageName(domain, path);
+		return new ImageReference(name, tag, digest);
+	}
+
+	private static boolean isLowerCase(String path) {
+		return path.toLowerCase(Locale.ENGLISH).equals(path);
+	}
+
+	private static boolean matchesPathRegex(String path) {
+		return Regex.PATH.matcher(path).matches();
 	}
 
 	/**

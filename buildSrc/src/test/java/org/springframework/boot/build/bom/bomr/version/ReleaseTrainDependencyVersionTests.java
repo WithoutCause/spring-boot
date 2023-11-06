@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author Andy Wilkinson
  */
-public class ReleaseTrainDependencyVersionTests {
+class ReleaseTrainDependencyVersionTests {
 
 	@Test
 	void parsingOfANonReleaseTrainVersionReturnsNull() {
@@ -38,62 +38,81 @@ public class ReleaseTrainDependencyVersionTests {
 	}
 
 	@Test
-	void isNewerThanWhenReleaseTrainIsNewerShouldReturnTrue() {
-		assertThat(version("Lovelace-RELEASE").isNewerThan(version("Kay-SR5"))).isTrue();
+	void isSameMajorWhenReleaseTrainIsDifferentShouldReturnFalse() {
+		assertThat(version("Lovelace-RELEASE").isSameMajor(version("Kay-SR5"))).isFalse();
 	}
 
 	@Test
-	void isNewerThanWhenVersionIsNewerShouldReturnTrue() {
-		assertThat(version("Kay-SR10").isNewerThan(version("Kay-SR5"))).isTrue();
+	void isSameMajorWhenReleaseTrainIsTheSameShouldReturnTrue() {
+		assertThat(version("Lovelace-RELEASE").isSameMajor(version("Lovelace-SR5"))).isTrue();
 	}
 
 	@Test
-	void isNewerThanWhenVersionIsOlderShouldReturnFalse() {
-		assertThat(version("Kay-RELEASE").isNewerThan(version("Kay-SR5"))).isFalse();
+	void isSameMinorWhenReleaseTrainIsDifferentShouldReturnFalse() {
+		assertThat(version("Lovelace-RELEASE").isSameMajor(version("Kay-SR5"))).isFalse();
 	}
 
 	@Test
-	void isNewerThanWhenReleaseTrainIsOlderShouldReturnFalse() {
-		assertThat(version("Ingalls-RELEASE").isNewerThan(version("Kay-SR5"))).isFalse();
+	void isSameMinorWhenReleaseTrainIsTheSameShouldReturnTrue() {
+		assertThat(version("Lovelace-RELEASE").isSameMajor(version("Lovelace-SR5"))).isTrue();
 	}
 
 	@Test
-	void isSameMajorAndNewerWhenWhenReleaseTrainIsNewerShouldReturnTrue() {
-		assertThat(version("Lovelace-RELEASE").isSameMajorAndNewerThan(version("Kay-SR5"))).isTrue();
+	void releaseTrainVersionIsNotSameMajorAsCalendarTrainVersion() {
+		assertThat(version("Kay-SR6").isSameMajor(calendarVersion("2020.0.0"))).isFalse();
 	}
 
 	@Test
-	void isSameMajorAndNewerThanWhenReleaseTrainIsOlderShouldReturnFalse() {
-		assertThat(version("Ingalls-RELEASE").isSameMajorAndNewerThan(version("Kay-SR5"))).isFalse();
+	void releaseTrainVersionIsNotSameMinorAsCalendarVersion() {
+		assertThat(version("Kay-SR6").isSameMinor(calendarVersion("2020.0.0"))).isFalse();
 	}
 
 	@Test
-	void isSameMajorAndNewerThanWhenVersionIsNewerShouldReturnTrue() {
-		assertThat(version("Kay-SR6").isSameMajorAndNewerThan(version("Kay-SR5"))).isTrue();
+	void isSnapshotForWhenSnapshotForServiceReleaseShouldReturnTrue() {
+		assertThat(version("Kay-BUILD-SNAPSHOT").isSnapshotFor(version("Kay-SR2"))).isTrue();
 	}
 
 	@Test
-	void isSameMinorAndNewerThanWhenReleaseTrainIsNewerShouldReturnFalse() {
-		assertThat(version("Lovelace-RELEASE").isSameMinorAndNewerThan(version("Kay-SR5"))).isFalse();
+	void isSnapshotForWhenSnapshotForReleaseShouldReturnTrue() {
+		assertThat(version("Kay-BUILD-SNAPSHOT").isSnapshotFor(version("Kay-RELEASE"))).isTrue();
 	}
 
 	@Test
-	void isSameMinorAndNewerThanWhenReleaseTrainIsTheSameAndVersionIsNewerShouldReturnTrue() {
-		assertThat(version("Kay-SR6").isSameMinorAndNewerThan(version("Kay-SR5"))).isTrue();
+	void isSnapshotForWhenSnapshotForReleaseCandidateShouldReturnTrue() {
+		assertThat(version("Kay-BUILD-SNAPSHOT").isSnapshotFor(version("Kay-RC1"))).isTrue();
 	}
 
 	@Test
-	void isSameMinorAndNewerThanWhenReleaseTrainAndVersionAreTheSameShouldReturnFalse() {
-		assertThat(version("Kay-SR6").isSameMinorAndNewerThan(version("Kay-SR6"))).isFalse();
+	void isSnapshotForWhenSnapshotForMilestoneShouldReturnTrue() {
+		assertThat(version("Kay-BUILD-SNAPSHOT").isSnapshotFor(version("Kay-M2"))).isTrue();
 	}
 
 	@Test
-	void isSameMinorAndNewerThanWhenReleaseTrainIsTheSameAndVersionIsOlderShouldReturnFalse() {
-		assertThat(version("Kay-SR6").isSameMinorAndNewerThan(version("Kay-SR7"))).isFalse();
+	void isSnapshotForWhenSnapshotForDifferentReleaseShouldReturnFalse() {
+		assertThat(version("Kay-BUILD-SNAPSHOT").isSnapshotFor(version("Lovelace-RELEASE"))).isFalse();
+	}
+
+	@Test
+	void isSnapshotForWhenSnapshotForDifferentReleaseCandidateShouldReturnTrue() {
+		assertThat(version("Kay-BUILD-SNAPSHOT").isSnapshotFor(version("Lovelace-RC2"))).isFalse();
+	}
+
+	@Test
+	void isSnapshotForWhenSnapshotForDifferentMilestoneShouldReturnTrue() {
+		assertThat(version("Kay-BUILD-SNAPSHOT").isSnapshotFor(version("Lovelace-M1"))).isFalse();
+	}
+
+	@Test
+	void isSnapshotForWhenNotSnapshotShouldReturnFalse() {
+		assertThat(version("Kay-M1").isSnapshotFor(version("Kay-RELEASE"))).isFalse();
 	}
 
 	private static ReleaseTrainDependencyVersion version(String input) {
 		return ReleaseTrainDependencyVersion.parse(input);
+	}
+
+	private CalendarVersionDependencyVersion calendarVersion(String version) {
+		return CalendarVersionDependencyVersion.parse(version);
 	}
 
 }

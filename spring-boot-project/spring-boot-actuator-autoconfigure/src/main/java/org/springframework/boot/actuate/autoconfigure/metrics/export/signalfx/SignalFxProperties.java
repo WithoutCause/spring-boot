@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @author Stephane Nicoll
  * @since 2.0.0
  */
-@ConfigurationProperties(prefix = "management.metrics.export.signalfx")
+@ConfigurationProperties(prefix = "management.signalfx.metrics.export")
 public class SignalFxProperties extends StepRegistryProperties {
 
 	/**
@@ -53,6 +53,11 @@ public class SignalFxProperties extends StepRegistryProperties {
 	 * Defaults to the local host name.
 	 */
 	private String source;
+
+	/**
+	 * Type of histogram to publish.
+	 */
+	private HistogramType publishedHistogramType = HistogramType.DEFAULT;
 
 	@Override
 	public Duration getStep() {
@@ -86,6 +91,33 @@ public class SignalFxProperties extends StepRegistryProperties {
 
 	public void setSource(String source) {
 		this.source = source;
+	}
+
+	public HistogramType getPublishedHistogramType() {
+		return this.publishedHistogramType;
+	}
+
+	public void setPublishedHistogramType(HistogramType publishedHistogramType) {
+		this.publishedHistogramType = publishedHistogramType;
+	}
+
+	public enum HistogramType {
+
+		/**
+		 * Default, time-based histogram.
+		 */
+		DEFAULT,
+
+		/**
+		 * Cumulative histogram.
+		 */
+		CUMULATIVE,
+
+		/**
+		 * Delta histogram.
+		 */
+		DELTA;
+
 	}
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,13 @@
 package org.springframework.boot.env;
 
 import java.util.List;
+import java.util.function.Function;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.boot.BootstrapRegistry;
+import org.springframework.boot.DefaultBootstrapContext;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
 import org.springframework.boot.context.event.ApplicationFailedEvent;
@@ -30,11 +34,12 @@ import org.springframework.boot.logging.DeferredLogs;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.mock.env.MockEnvironment;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
 
 /**
  * Tests for {@link EnvironmentPostProcessorApplicationListener}.
@@ -43,22 +48,32 @@ import static org.mockito.Mockito.verify;
  */
 class EnvironmentPostProcessorApplicationListenerTests {
 
-	private DeferredLogs deferredLogs = spy(new DeferredLogs());
+	private final DeferredLogs deferredLogs = spy(new DeferredLogs());
 
-	private EnvironmentPostProcessorApplicationListener listener = new EnvironmentPostProcessorApplicationListener(
-			EnvironmentPostProcessorsFactory.singleton(TestEnvironmentPostProcessor::new), this.deferredLogs);
+	private final DefaultBootstrapContext bootstrapContext = spy(new DefaultBootstrapContext());
+
+	private final EnvironmentPostProcessorApplicationListener listener = new EnvironmentPostProcessorApplicationListener();
+
+	@BeforeEach
+	void setup() {
+		ReflectionTestUtils.setField(this.listener, "deferredLogs", this.deferredLogs);
+		ReflectionTestUtils.setField(this.listener, "postProcessorsFactory",
+				(Function<ClassLoader, EnvironmentPostProcessorsFactory>) (
+						classLoader) -> EnvironmentPostProcessorsFactory.of(TestEnvironmentPostProcessor.class));
+	}
 
 	@Test
 	void createUsesSpringFactories() {
 		EnvironmentPostProcessorApplicationListener listener = new EnvironmentPostProcessorApplicationListener();
-		assertThat(listener.getEnvironmentPostProcessors()).hasSizeGreaterThan(1);
+		assertThat(listener.getEnvironmentPostProcessors(null, this.bootstrapContext)).hasSizeGreaterThan(1);
 	}
 
 	@Test
 	void createWhenHasFactoryUsesFactory() {
-		EnvironmentPostProcessorApplicationListener listener = new EnvironmentPostProcessorApplicationListener(
-				EnvironmentPostProcessorsFactory.singleton(TestEnvironmentPostProcessor::new));
-		List<EnvironmentPostProcessor> postProcessors = listener.getEnvironmentPostProcessors();
+		EnvironmentPostProcessorApplicationListener listener = EnvironmentPostProcessorApplicationListener
+			.with(EnvironmentPostProcessorsFactory.of(TestEnvironmentPostProcessor.class));
+		List<EnvironmentPostProcessor> postProcessors = listener.getEnvironmentPostProcessors(null,
+				this.bootstrapContext);
 		assertThat(postProcessors).hasSize(1);
 		assertThat(postProcessors.get(0)).isInstanceOf(TestEnvironmentPostProcessor.class);
 	}
@@ -87,8 +102,8 @@ class EnvironmentPostProcessorApplicationListenerTests {
 	void onApplicationEventWhenApplicationEnvironmentPreparedEventCallsPostProcessors() {
 		SpringApplication application = mock(SpringApplication.class);
 		MockEnvironment environment = new MockEnvironment();
-		ApplicationEnvironmentPreparedEvent event = new ApplicationEnvironmentPreparedEvent(application, new String[0],
-				environment);
+		ApplicationEnvironmentPreparedEvent event = new ApplicationEnvironmentPreparedEvent(this.bootstrapContext,
+				application, new String[0], environment);
 		this.listener.onApplicationEvent(event);
 		assertThat(environment.getProperty("processed")).isEqualTo("true");
 	}
@@ -99,7 +114,7 @@ class EnvironmentPostProcessorApplicationListenerTests {
 		ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
 		ApplicationPreparedEvent event = new ApplicationPreparedEvent(application, new String[0], context);
 		this.listener.onApplicationEvent(event);
-		verify(this.deferredLogs).switchOverAll();
+		then(this.deferredLogs).should().switchOverAll();
 	}
 
 	@Test
@@ -109,12 +124,14 @@ class EnvironmentPostProcessorApplicationListenerTests {
 		ApplicationFailedEvent event = new ApplicationFailedEvent(application, new String[0], context,
 				new RuntimeException());
 		this.listener.onApplicationEvent(event);
-		verify(this.deferredLogs).switchOverAll();
+		then(this.deferredLogs).should().switchOverAll();
 	}
 
 	static class TestEnvironmentPostProcessor implements EnvironmentPostProcessor {
 
-		TestEnvironmentPostProcessor(DeferredLogFactory logFactory) {
+		TestEnvironmentPostProcessor(DeferredLogFactory logFactory, BootstrapRegistry bootstrapRegistry) {
+			assertThat(logFactory).isNotNull();
+			assertThat(bootstrapRegistry).isNotNull();
 		}
 
 		@Override

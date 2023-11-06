@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,18 @@
 
 package org.springframework.boot;
 
-import java.lang.management.ManagementFactory;
-import java.net.InetAddress;
 import java.util.concurrent.Callable;
 
 import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 
+import org.springframework.aot.AotDetector;
+import org.springframework.boot.SpringApplication.Startup;
 import org.springframework.boot.system.ApplicationHome;
 import org.springframework.boot.system.ApplicationPid;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.log.LogMessage;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
-import org.springframework.util.StopWatch;
 import org.springframework.util.StringUtils;
 
 /**
@@ -37,12 +35,9 @@ import org.springframework.util.StringUtils;
  *
  * @author Phillip Webb
  * @author Dave Syer
+ * @author Moritz Halbritter
  */
 class StartupInfoLogger {
-
-	private static final Log logger = LogFactory.getLog(StartupInfoLogger.class);
-
-	private static final long HOST_NAME_RESOLVE_THRESHOLD = 200;
 
 	private final Class<?> sourceClass;
 
@@ -56,19 +51,19 @@ class StartupInfoLogger {
 		applicationLog.debug(LogMessage.of(this::getRunningMessage));
 	}
 
-	void logStarted(Log applicationLog, StopWatch stopWatch) {
+	void logStarted(Log applicationLog, Startup startup) {
 		if (applicationLog.isInfoEnabled()) {
-			applicationLog.info(getStartedMessage(stopWatch));
+			applicationLog.info(getStartedMessage(startup));
 		}
 	}
 
 	private CharSequence getStartingMessage() {
 		StringBuilder message = new StringBuilder();
-		message.append("Starting ");
+		message.append("Starting");
+		appendAotMode(message);
 		appendApplicationName(message);
 		appendVersion(message, this.sourceClass);
 		appendJavaVersion(message);
-		appendOn(message);
 		appendPid(message);
 		appendContext(message);
 		return message;
@@ -83,50 +78,32 @@ class StartupInfoLogger {
 		return message;
 	}
 
-	private CharSequence getStartedMessage(StopWatch stopWatch) {
+	private CharSequence getStartedMessage(Startup startup) {
 		StringBuilder message = new StringBuilder();
-		message.append("Started ");
+		message.append(startup.action());
 		appendApplicationName(message);
 		message.append(" in ");
-		message.append(stopWatch.getTotalTimeMillis() / 1000.0);
+		message.append(startup.timeTakenToStarted().toMillis() / 1000.0);
 		message.append(" seconds");
-		try {
-			double uptime = ManagementFactory.getRuntimeMXBean().getUptime() / 1000.0;
-			message.append(" (JVM running for ").append(uptime).append(")");
-		}
-		catch (Throwable ex) {
-			// No JVM time available
+		Long uptimeMs = startup.processUptime();
+		if (uptimeMs != null) {
+			double uptime = uptimeMs / 1000.0;
+			message.append(" (process running for ").append(uptime).append(")");
 		}
 		return message;
 	}
 
+	private void appendAotMode(StringBuilder message) {
+		append(message, "", () -> AotDetector.useGeneratedArtifacts() ? "AOT-processed" : null);
+	}
+
 	private void appendApplicationName(StringBuilder message) {
-		String name = (this.sourceClass != null) ? ClassUtils.getShortName(this.sourceClass) : "application";
-		message.append(name);
+		append(message, "",
+				() -> (this.sourceClass != null) ? ClassUtils.getShortName(this.sourceClass) : "application");
 	}
 
 	private void appendVersion(StringBuilder message, Class<?> source) {
 		append(message, "v", () -> source.getPackage().getImplementationVersion());
-	}
-
-	private void appendOn(StringBuilder message) {
-		long startTime = System.currentTimeMillis();
-		append(message, "on ", () -> InetAddress.getLocalHost().getHostName());
-		long resolveTime = System.currentTimeMillis() - startTime;
-		if (resolveTime > HOST_NAME_RESOLVE_THRESHOLD) {
-			logger.warn(LogMessage.of(() -> {
-				StringBuilder warning = new StringBuilder();
-				warning.append("InetAddress.getLocalHost().getHostName() took ");
-				warning.append(resolveTime);
-				warning.append(" milliseconds to respond.");
-				warning.append(" Please verify your network configuration");
-				if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-					warning.append(" (macOS machines may need to add entries to /etc/hosts)");
-				}
-				warning.append(".");
-				return warning;
-			}));
-		}
 	}
 
 	private void appendPid(StringBuilder message) {

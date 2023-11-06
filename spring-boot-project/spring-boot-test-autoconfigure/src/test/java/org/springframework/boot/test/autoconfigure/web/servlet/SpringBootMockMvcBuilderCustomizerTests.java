@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,21 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.boot.test.autoconfigure.web.servlet;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServlet;
-
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.FilterConfig;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServlet;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.boot.test.autoconfigure.web.servlet.SpringBootMockMvcBuilderCustomizer.DeferredLinesWriter;
@@ -37,11 +43,12 @@ import org.springframework.boot.web.servlet.context.AnnotationConfigServletWebAp
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.mock.web.MockServletContext;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Tests for {@link SpringBootMockMvcBuilderCustomizer}.
@@ -50,10 +57,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SpringBootMockMvcBuilderCustomizerTests {
 
-	private SpringBootMockMvcBuilderCustomizer customizer;
-
 	@Test
-	@SuppressWarnings("unchecked")
 	void customizeShouldAddFilters() {
 		AnnotationConfigServletWebApplicationContext context = new AnnotationConfigServletWebApplicationContext();
 		MockServletContext servletContext = new MockServletContext();
@@ -61,14 +65,20 @@ class SpringBootMockMvcBuilderCustomizerTests {
 		context.register(ServletConfiguration.class, FilterConfiguration.class);
 		context.refresh();
 		DefaultMockMvcBuilder builder = MockMvcBuilders.webAppContextSetup(context);
-		this.customizer = new SpringBootMockMvcBuilderCustomizer(context);
-		this.customizer.customize(builder);
-		FilterRegistrationBean<?> registrationBean = (FilterRegistrationBean<?>) context
-				.getBean("filterRegistrationBean");
-		Filter testFilter = (Filter) context.getBean("testFilter");
-		Filter otherTestFilter = registrationBean.getFilter();
-		List<Filter> filters = (List<Filter>) ReflectionTestUtils.getField(builder, "filters");
-		assertThat(filters).containsExactlyInAnyOrder(testFilter, otherTestFilter);
+		SpringBootMockMvcBuilderCustomizer customizer = new SpringBootMockMvcBuilderCustomizer(context);
+		customizer.customize(builder);
+		FilterRegistrationBean<?> registrationBean = (FilterRegistrationBean<?>) context.getBean("otherTestFilter");
+		TestFilter testFilter = context.getBean("testFilter", TestFilter.class);
+		OtherTestFilter otherTestFilter = (OtherTestFilter) registrationBean.getFilter();
+		assertThat(builder).extracting("filters", as(InstanceOfAssertFactories.LIST))
+			.extracting("delegate", "dispatcherTypes")
+			.containsExactlyInAnyOrder(tuple(testFilter, EnumSet.of(DispatcherType.REQUEST)),
+					tuple(otherTestFilter, EnumSet.of(DispatcherType.REQUEST, DispatcherType.ERROR)));
+		builder.build();
+		assertThat(testFilter.filterName).isEqualTo("testFilter");
+		assertThat(testFilter.initParams).isEmpty();
+		assertThat(otherTestFilter.filterName).isEqualTo("otherTestFilter");
+		assertThat(otherTestFilter.initParams).isEqualTo(Map.of("a", "alpha", "b", "bravo"));
 	}
 
 	@Test
@@ -94,11 +104,11 @@ class SpringBootMockMvcBuilderCustomizerTests {
 			});
 			thread.start();
 		}
-		latch.await(60, TimeUnit.SECONDS);
+		assertThat(latch.await(60, TimeUnit.SECONDS)).isTrue();
 
 		assertThat(delegate.allWritten).hasSize(10000);
 		assertThat(delegate.allWritten)
-				.allSatisfy((written) -> assertThat(written).containsExactly("1", "2", "3", "4", "5"));
+			.allSatisfy((written) -> assertThat(written).containsExactly("1", "2", "3", "4", "5"));
 	}
 
 	private static final class CapturingLinesWriter implements LinesWriter {
@@ -131,8 +141,12 @@ class SpringBootMockMvcBuilderCustomizerTests {
 	static class FilterConfiguration {
 
 		@Bean
-		FilterRegistrationBean<OtherTestFilter> filterRegistrationBean() {
-			return new FilterRegistrationBean<>(new OtherTestFilter());
+		FilterRegistrationBean<OtherTestFilter> otherTestFilter() {
+			FilterRegistrationBean<OtherTestFilter> filterRegistrationBean = new FilterRegistrationBean<>(
+					new OtherTestFilter());
+			filterRegistrationBean.setInitParameters(Map.of("a", "alpha", "b", "bravo"));
+			filterRegistrationBean.setDispatcherTypes(EnumSet.of(DispatcherType.REQUEST, DispatcherType.ERROR));
+			return filterRegistrationBean;
 		}
 
 		@Bean
@@ -148,9 +162,15 @@ class SpringBootMockMvcBuilderCustomizerTests {
 
 	static class TestFilter implements Filter {
 
+		private String filterName;
+
+		private Map<String, String> initParams = new HashMap<>();
+
 		@Override
 		public void init(FilterConfig filterConfig) {
-
+			this.filterName = filterConfig.getFilterName();
+			Collections.list(filterConfig.getInitParameterNames())
+				.forEach((name) -> this.initParams.put(name, filterConfig.getInitParameter(name)));
 		}
 
 		@Override
@@ -167,9 +187,15 @@ class SpringBootMockMvcBuilderCustomizerTests {
 
 	static class OtherTestFilter implements Filter {
 
+		private String filterName;
+
+		private Map<String, String> initParams = new HashMap<>();
+
 		@Override
 		public void init(FilterConfig filterConfig) {
-
+			this.filterName = filterConfig.getFilterName();
+			Collections.list(filterConfig.getInitParameterNames())
+				.forEach((name) -> this.initParams.put(name, filterConfig.getInitParameter(name)));
 		}
 
 		@Override
@@ -181,6 +207,11 @@ class SpringBootMockMvcBuilderCustomizerTests {
 		public void destroy() {
 
 		}
+
+	}
+
+	static record RegisteredFilter(Filter filter, Map<String, String> initParameters,
+			EnumSet<DispatcherType> dispatcherTypes) {
 
 	}
 

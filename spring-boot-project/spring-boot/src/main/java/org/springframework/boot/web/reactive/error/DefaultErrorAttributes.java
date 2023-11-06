@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.io.StringWriter;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.boot.web.error.ErrorAttributeOptions;
 import org.springframework.boot.web.error.ErrorAttributeOptions.Include;
@@ -61,34 +62,11 @@ import org.springframework.web.server.ServerWebExchange;
  */
 public class DefaultErrorAttributes implements ErrorAttributes {
 
-	private static final String ERROR_ATTRIBUTE = DefaultErrorAttributes.class.getName() + ".ERROR";
-
-	private final Boolean includeException;
-
-	/**
-	 * Create a new {@link DefaultErrorAttributes} instance.
-	 */
-	public DefaultErrorAttributes() {
-		this.includeException = null;
-	}
-
-	/**
-	 * Create a new {@link DefaultErrorAttributes} instance.
-	 * @param includeException whether to include the "exception" attribute
-	 * @deprecated since 2.3.0 in favor of
-	 * {@link ErrorAttributeOptions#including(Include...)}
-	 */
-	@Deprecated
-	public DefaultErrorAttributes(boolean includeException) {
-		this.includeException = includeException;
-	}
+	private static final String ERROR_INTERNAL_ATTRIBUTE = DefaultErrorAttributes.class.getName() + ".ERROR";
 
 	@Override
 	public Map<String, Object> getErrorAttributes(ServerRequest request, ErrorAttributeOptions options) {
 		Map<String, Object> errorAttributes = getErrorAttributes(request, options.isIncluded(Include.STACK_TRACE));
-		if (this.includeException != null) {
-			options = options.including(Include.EXCEPTION);
-		}
 		if (!options.isIncluded(Include.EXCEPTION)) {
 			errorAttributes.remove("exception");
 		}
@@ -96,7 +74,7 @@ public class DefaultErrorAttributes implements ErrorAttributes {
 			errorAttributes.remove("trace");
 		}
 		if (!options.isIncluded(Include.MESSAGE) && errorAttributes.get("message") != null) {
-			errorAttributes.put("message", "");
+			errorAttributes.remove("message");
 		}
 		if (!options.isIncluded(Include.BINDING_ERRORS)) {
 			errorAttributes.remove("errors");
@@ -104,15 +82,14 @@ public class DefaultErrorAttributes implements ErrorAttributes {
 		return errorAttributes;
 	}
 
-	@Override
-	@Deprecated
-	public Map<String, Object> getErrorAttributes(ServerRequest request, boolean includeStackTrace) {
+	private Map<String, Object> getErrorAttributes(ServerRequest request, boolean includeStackTrace) {
 		Map<String, Object> errorAttributes = new LinkedHashMap<>();
 		errorAttributes.put("timestamp", new Date());
 		errorAttributes.put("path", request.path());
 		Throwable error = getError(request);
 		MergedAnnotation<ResponseStatus> responseStatusAnnotation = MergedAnnotations
-				.from(error.getClass(), SearchStrategy.TYPE_HIERARCHY).get(ResponseStatus.class);
+			.from(error.getClass(), SearchStrategy.TYPE_HIERARCHY)
+			.get(ResponseStatus.class);
 		HttpStatus errorStatus = determineHttpStatus(error, responseStatusAnnotation);
 		errorAttributes.put("status", errorStatus.value());
 		errorAttributes.put("error", errorStatus.getReasonPhrase());
@@ -123,8 +100,11 @@ public class DefaultErrorAttributes implements ErrorAttributes {
 	}
 
 	private HttpStatus determineHttpStatus(Throwable error, MergedAnnotation<ResponseStatus> responseStatusAnnotation) {
-		if (error instanceof ResponseStatusException) {
-			return ((ResponseStatusException) error).getStatus();
+		if (error instanceof ResponseStatusException responseStatusException) {
+			HttpStatus httpStatus = HttpStatus.resolve(responseStatusException.getStatusCode().value());
+			if (httpStatus != null) {
+				return httpStatus;
+			}
 		}
 		return responseStatusAnnotation.getValue("code", HttpStatus.class).orElse(HttpStatus.INTERNAL_SERVER_ERROR);
 	}
@@ -133,8 +113,8 @@ public class DefaultErrorAttributes implements ErrorAttributes {
 		if (error instanceof BindingResult) {
 			return error.getMessage();
 		}
-		if (error instanceof ResponseStatusException) {
-			return ((ResponseStatusException) error).getReason();
+		if (error instanceof ResponseStatusException responseStatusException) {
+			return responseStatusException.getReason();
 		}
 		String reason = responseStatusAnnotation.getValue("reason", String.class).orElse("");
 		if (StringUtils.hasText(reason)) {
@@ -162,8 +142,7 @@ public class DefaultErrorAttributes implements ErrorAttributes {
 		if (includeStackTrace) {
 			addStackTrace(errorAttributes, error);
 		}
-		if (error instanceof BindingResult) {
-			BindingResult result = (BindingResult) error;
+		if (error instanceof BindingResult result) {
 			if (result.hasErrors()) {
 				errorAttributes.put("errors", result.getAllErrors());
 			}
@@ -172,13 +151,15 @@ public class DefaultErrorAttributes implements ErrorAttributes {
 
 	@Override
 	public Throwable getError(ServerRequest request) {
-		return (Throwable) request.attribute(ERROR_ATTRIBUTE)
-				.orElseThrow(() -> new IllegalStateException("Missing exception attribute in ServerWebExchange"));
+		Optional<Object> error = request.attribute(ERROR_INTERNAL_ATTRIBUTE);
+		error.ifPresent((value) -> request.attributes().putIfAbsent(ErrorAttributes.ERROR_ATTRIBUTE, value));
+		return (Throwable) error
+			.orElseThrow(() -> new IllegalStateException("Missing exception attribute in ServerWebExchange"));
 	}
 
 	@Override
 	public void storeErrorInformation(Throwable error, ServerWebExchange exchange) {
-		exchange.getAttributes().putIfAbsent(ERROR_ATTRIBUTE, error);
+		exchange.getAttributes().putIfAbsent(ERROR_INTERNAL_ATTRIBUTE, error);
 	}
 
 }

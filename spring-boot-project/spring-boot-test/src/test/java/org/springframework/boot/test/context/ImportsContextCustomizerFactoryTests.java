@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.stereotype.Component;
@@ -41,7 +42,7 @@ import static org.mockito.Mockito.mock;
  */
 class ImportsContextCustomizerFactoryTests {
 
-	private ImportsContextCustomizerFactory factory = new ImportsContextCustomizerFactory();
+	private final ImportsContextCustomizerFactory factory = new ImportsContextCustomizerFactory();
 
 	@Test
 	void getContextCustomizerWhenHasNoImportAnnotationShouldReturnNull() {
@@ -68,17 +69,31 @@ class ImportsContextCustomizerFactoryTests {
 		ContextCustomizer customizer3 = this.factory.createContextCustomizer(TestWithImportAndMetaImport.class, null);
 		ContextCustomizer customizer4 = this.factory.createContextCustomizer(TestWithSameImportAndMetaImport.class,
 				null);
-		assertThat(customizer1.hashCode()).isEqualTo(customizer1.hashCode());
-		assertThat(customizer1.hashCode()).isEqualTo(customizer2.hashCode());
+		assertThat(customizer1).hasSameHashCodeAs(customizer1);
+		assertThat(customizer1).hasSameHashCodeAs(customizer2);
 		assertThat(customizer1).isEqualTo(customizer1).isEqualTo(customizer2).isNotEqualTo(customizer3);
 		assertThat(customizer3).isEqualTo(customizer4);
 	}
 
 	@Test
+	void contextCustomizerEqualsAndHashCodeConsidersComponentScan() {
+		ContextCustomizer customizer1 = this.factory
+			.createContextCustomizer(TestWithImportAndComponentScanOfSomePackage.class, null);
+		ContextCustomizer customizer2 = this.factory
+			.createContextCustomizer(TestWithImportAndComponentScanOfSomePackage.class, null);
+		ContextCustomizer customizer3 = this.factory
+			.createContextCustomizer(TestWithImportAndComponentScanOfAnotherPackage.class, null);
+		assertThat(customizer1.hashCode()).isEqualTo(customizer2.hashCode());
+		assertThat(customizer1).isEqualTo(customizer2);
+		assertThat(customizer3.hashCode()).isNotEqualTo(customizer2.hashCode()).isNotEqualTo(customizer1.hashCode());
+		assertThat(customizer3).isNotEqualTo(customizer2).isNotEqualTo(customizer1);
+	}
+
+	@Test
 	void getContextCustomizerWhenClassHasBeanMethodsShouldThrowException() {
 		assertThatIllegalStateException()
-				.isThrownBy(() -> this.factory.createContextCustomizer(TestWithImportAndBeanMethod.class, null))
-				.withMessageContaining("Test classes cannot include @Bean methods");
+			.isThrownBy(() -> this.factory.createContextCustomizer(TestWithImportAndBeanMethod.class, null))
+			.withMessageContaining("Test classes cannot include @Bean methods");
 	}
 
 	@Test
@@ -93,7 +108,7 @@ class ImportsContextCustomizerFactoryTests {
 	@Test
 	void selfAnnotatingAnnotationDoesNotCauseStackOverflow() {
 		assertThat(this.factory.createContextCustomizer(TestWithImportAndSelfAnnotatingAnnotation.class, null))
-				.isNotNull();
+			.isNotNull();
 	}
 
 	static class TestWithNoImport {
@@ -102,6 +117,18 @@ class ImportsContextCustomizerFactoryTests {
 
 	@Import(ImportedBean.class)
 	static class TestWithImport {
+
+	}
+
+	@Import(ImportedBean.class)
+	@ComponentScan("some.package")
+	static class TestWithImportAndComponentScanOfSomePackage {
+
+	}
+
+	@Import(ImportedBean.class)
+	@ComponentScan("another.package")
+	static class TestWithImportAndComponentScanOfAnotherPackage {
 
 	}
 

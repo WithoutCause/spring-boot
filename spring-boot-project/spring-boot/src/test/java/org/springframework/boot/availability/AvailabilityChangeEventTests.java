@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,8 @@
 package org.springframework.boot.availability;
 
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
@@ -28,8 +26,9 @@ import org.springframework.core.ResolvableType;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.mockito.ArgumentMatchers.assertArg;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 /**
  * Tests for {@link AvailabilityChangeEvent}.
@@ -38,12 +37,12 @@ import static org.mockito.Mockito.verify;
  */
 class AvailabilityChangeEventTests {
 
-	private Object source = new Object();
+	private final Object source = new Object();
 
 	@Test
 	void createWhenStateIsNullThrowsException() {
 		assertThatIllegalArgumentException().isThrownBy(() -> new AvailabilityChangeEvent<>(this.source, null))
-				.withMessage("Payload must not be null");
+			.withMessage("Payload must not be null");
 	}
 
 	@Test
@@ -76,11 +75,12 @@ class AvailabilityChangeEventTests {
 		ApplicationContext context = mock(ApplicationContext.class);
 		AvailabilityState state = LivenessState.CORRECT;
 		AvailabilityChangeEvent.publish(context, state);
-		ArgumentCaptor<ApplicationEvent> captor = ArgumentCaptor.forClass(ApplicationEvent.class);
-		verify(context).publishEvent(captor.capture());
-		AvailabilityChangeEvent<?> event = (AvailabilityChangeEvent<?>) captor.getValue();
-		assertThat(event.getSource()).isEqualTo(context);
-		assertThat(event.getState()).isEqualTo(state);
+		then(context).should()
+			.publishEvent(assertArg((event) -> assertThat(event).isInstanceOfSatisfying(AvailabilityChangeEvent.class,
+					(castedEvent) -> {
+						assertThat(castedEvent.getSource()).isEqualTo(context);
+						assertThat(castedEvent.getState()).isEqualTo(state);
+					})));
 	}
 
 	@Test

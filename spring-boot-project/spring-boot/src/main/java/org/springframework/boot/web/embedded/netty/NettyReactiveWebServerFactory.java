@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,28 +27,30 @@ import java.util.Set;
 
 import reactor.netty.http.HttpProtocol;
 import reactor.netty.http.server.HttpServer;
-import reactor.netty.resources.LoopResources;
 
 import org.springframework.boot.web.reactive.server.AbstractReactiveWebServerFactory;
 import org.springframework.boot.web.reactive.server.ReactiveWebServerFactory;
 import org.springframework.boot.web.server.Shutdown;
+import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServer;
-import org.springframework.http.client.reactive.ReactorResourceFactory;
+import org.springframework.http.client.ReactorResourceFactory;
 import org.springframework.http.server.reactive.HttpHandler;
 import org.springframework.http.server.reactive.ReactorHttpHandlerAdapter;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 /**
  * {@link ReactiveWebServerFactory} that can be used to create {@link NettyWebServer}s.
  *
  * @author Brian Clozel
+ * @author Moritz Halbritter
  * @since 2.0.0
  */
 public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFactory {
 
 	private Set<NettyServerCustomizer> serverCustomizers = new LinkedHashSet<>();
 
-	private List<NettyRouteProvider> routeProviders = new ArrayList<>();
+	private final List<NettyRouteProvider> routeProviders = new ArrayList<>();
 
 	private Duration lifecycleTimeout;
 
@@ -69,9 +71,15 @@ public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFact
 	public WebServer getWebServer(HttpHandler httpHandler) {
 		HttpServer httpServer = createHttpServer();
 		ReactorHttpHandlerAdapter handlerAdapter = new ReactorHttpHandlerAdapter(httpHandler);
-		NettyWebServer webServer = new NettyWebServer(httpServer, handlerAdapter, this.lifecycleTimeout, getShutdown());
+		NettyWebServer webServer = createNettyWebServer(httpServer, handlerAdapter, this.lifecycleTimeout,
+				getShutdown());
 		webServer.setRouteProviders(this.routeProviders);
 		return webServer;
+	}
+
+	NettyWebServer createNettyWebServer(HttpServer httpServer, ReactorHttpHandlerAdapter handlerAdapter,
+			Duration lifecycleTimeout, Shutdown shutdown) {
+		return new NettyWebServer(httpServer, handlerAdapter, lifecycleTimeout, shutdown, this.resourceFactory);
 	}
 
 	/**
@@ -94,7 +102,8 @@ public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFact
 	}
 
 	/**
-	 * Add {@link NettyServerCustomizer}s that should applied while building the server.
+	 * Add {@link NettyServerCustomizer}s that should be applied while building the
+	 * server.
 	 * @param serverCustomizers the customizers to add
 	 */
 	public void addServerCustomizers(NettyServerCustomizer... serverCustomizers) {
@@ -150,19 +159,9 @@ public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFact
 	}
 
 	private HttpServer createHttpServer() {
-		HttpServer server = HttpServer.create();
-		if (this.resourceFactory != null) {
-			LoopResources resources = this.resourceFactory.getLoopResources();
-			Assert.notNull(resources, "No LoopResources: is ReactorResourceFactory not initialized yet?");
-			server = server.runOn(resources).bindAddress(this::getListenAddress);
-		}
-		else {
-			server = server.bindAddress(this::getListenAddress);
-		}
-		if (getSsl() != null && getSsl().isEnabled()) {
-			SslServerCustomizer sslServerCustomizer = new SslServerCustomizer(getSsl(), getHttp2(),
-					getSslStoreProvider());
-			server = sslServerCustomizer.apply(server);
+		HttpServer server = HttpServer.create().bindAddress(this::getListenAddress);
+		if (Ssl.isEnabled(getSsl())) {
+			server = customizeSslConfiguration(server);
 		}
 		if (getCompression() != null && getCompression().getEnabled()) {
 			CompressionCustomizer compressionCustomizer = new CompressionCustomizer(getCompression());
@@ -172,11 +171,27 @@ public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFact
 		return applyCustomizers(server);
 	}
 
-	private HttpProtocol[] listProtocols() {
-		if (getHttp2() != null && getHttp2().isEnabled() && getSsl() != null && getSsl().isEnabled()) {
-			return new HttpProtocol[] { HttpProtocol.H2, HttpProtocol.HTTP11 };
+	private HttpServer customizeSslConfiguration(HttpServer httpServer) {
+		SslServerCustomizer customizer = new SslServerCustomizer(getHttp2(), getSsl().getClientAuth(), getSslBundle());
+		String bundleName = getSsl().getBundle();
+		if (StringUtils.hasText(bundleName)) {
+			getSslBundles().addBundleUpdateHandler(bundleName, customizer::updateSslBundle);
 		}
-		return new HttpProtocol[] { HttpProtocol.HTTP11 };
+		return customizer.apply(httpServer);
+	}
+
+	private HttpProtocol[] listProtocols() {
+		List<HttpProtocol> protocols = new ArrayList<>();
+		protocols.add(HttpProtocol.HTTP11);
+		if (getHttp2() != null && getHttp2().isEnabled()) {
+			if (getSsl() != null && getSsl().isEnabled()) {
+				protocols.add(HttpProtocol.H2);
+			}
+			else {
+				protocols.add(HttpProtocol.H2C);
+			}
+		}
+		return protocols.toArray(new HttpProtocol[0]);
 	}
 
 	private InetSocketAddress getListenAddress() {

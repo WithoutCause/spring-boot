@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,14 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Reader;
+import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -64,9 +67,12 @@ public class TestSliceMetadata extends DefaultTask {
 
 	public TestSliceMetadata() {
 		getInputs().dir((Callable<File>) () -> this.sourceSet.getOutput().getResourcesDir())
-				.withPathSensitivity(PathSensitivity.RELATIVE);
+			.withPathSensitivity(PathSensitivity.RELATIVE)
+			.withPropertyName("resources");
+		dependsOn((Callable<String>) () -> this.sourceSet.getProcessResourcesTaskName());
 		getInputs().files((Callable<FileCollection>) () -> this.sourceSet.getOutput().getClassesDirs())
-				.withPathSensitivity(PathSensitivity.RELATIVE);
+			.withPathSensitivity(PathSensitivity.RELATIVE)
+			.withPropertyName("classes");
 	}
 
 	public void setSourceSet(SourceSet sourceSet) {
@@ -81,8 +87,9 @@ public class TestSliceMetadata extends DefaultTask {
 	public void setOutputFile(File outputFile) {
 		this.outputFile = outputFile;
 		Configuration testSliceMetadata = getProject().getConfigurations().maybeCreate("testSliceMetadata");
-		getProject().getArtifacts().add(testSliceMetadata.getName(),
-				getProject().provider((Callable<File>) this::getOutputFile), (artifact) -> artifact.builtBy(this));
+		getProject().getArtifacts()
+			.add(testSliceMetadata.getName(), getProject().provider((Callable<File>) this::getOutputFile),
+					(artifact) -> artifact.builtBy(this));
 	}
 
 	@TaskAction
@@ -97,16 +104,60 @@ public class TestSliceMetadata extends DefaultTask {
 	private Properties readTestSlices() throws IOException {
 		Properties testSlices = CollectionFactory.createSortedProperties(true);
 		try (URLClassLoader classLoader = new URLClassLoader(
-				StreamSupport.stream(this.sourceSet.getRuntimeClasspath().spliterator(), false).map(this::toURL)
-						.toArray(URL[]::new))) {
+				StreamSupport.stream(this.sourceSet.getRuntimeClasspath().spliterator(), false)
+					.map(this::toURL)
+					.toArray(URL[]::new))) {
 			MetadataReaderFactory metadataReaderFactory = new SimpleMetadataReaderFactory(classLoader);
 			Properties springFactories = readSpringFactories(
 					new File(this.sourceSet.getOutput().getResourcesDir(), "META-INF/spring.factories"));
+			readTestSlicesDirectory(springFactories,
+					new File(this.sourceSet.getOutput().getResourcesDir(), "META-INF/spring/"));
 			for (File classesDir : this.sourceSet.getOutput().getClassesDirs()) {
 				addTestSlices(testSlices, classesDir, metadataReaderFactory, springFactories);
 			}
 		}
 		return testSlices;
+	}
+
+	/**
+	 * Reads files from the given directory and puts them in springFactories. The key is
+	 * the file name, the value is the file contents, split by line, delimited with comma.
+	 * This is done to mimic the spring.factories structure.
+	 * @param springFactories spring.factories parsed as properties
+	 * @param directory directory to scan
+	 */
+	private void readTestSlicesDirectory(Properties springFactories, File directory) {
+		File[] files = directory.listFiles((dir, name) -> name.endsWith(".imports"));
+		if (files == null) {
+			return;
+		}
+		for (File file : files) {
+			try {
+				List<String> lines = removeComments(Files.readAllLines(file.toPath()));
+				String fileNameWithoutExtension = file.getName()
+					.substring(0, file.getName().length() - ".imports".length());
+				springFactories.setProperty(fileNameWithoutExtension,
+						StringUtils.collectionToCommaDelimitedString(lines));
+			}
+			catch (IOException ex) {
+				throw new UncheckedIOException("Failed to read file " + file, ex);
+			}
+		}
+	}
+
+	private List<String> removeComments(List<String> lines) {
+		List<String> result = new ArrayList<>();
+		for (String line : lines) {
+			int commentIndex = line.indexOf('#');
+			if (commentIndex > -1) {
+				line = line.substring(0, commentIndex);
+			}
+			line = line.trim();
+			if (!line.isEmpty()) {
+				result.add(line);
+			}
+		}
+		return result;
 	}
 
 	private URL toURL(File file) {
@@ -130,9 +181,9 @@ public class TestSliceMetadata extends DefaultTask {
 			Properties springFactories) throws IOException {
 		try (Stream<Path> classes = Files.walk(classesDir.toPath())) {
 			classes.filter((path) -> path.toString().endsWith("Test.class"))
-					.map((path) -> getMetadataReader(path, metadataReaderFactory))
-					.filter((metadataReader) -> metadataReader.getClassMetadata().isAnnotation())
-					.forEach((metadataReader) -> addTestSlice(testSlices, springFactories, metadataReader));
+				.map((path) -> getMetadataReader(path, metadataReaderFactory))
+				.filter((metadataReader) -> metadataReader.getClassMetadata().isAnnotation())
+				.forEach((metadataReader) -> addTestSlice(testSlices, springFactories, metadataReader));
 		}
 
 	}
@@ -158,19 +209,20 @@ public class TestSliceMetadata extends DefaultTask {
 		if (annotationMetadata.isAnnotated("org.springframework.boot.autoconfigure.ImportAutoConfiguration")) {
 			importers = Stream.concat(importers, Stream.of(annotationMetadata.getClassName()));
 		}
-		return importers.flatMap(
-				(importer) -> StringUtils.commaDelimitedListToSet(springFactories.getProperty(importer)).stream())
-				.collect(Collectors.toCollection(TreeSet::new));
+		return importers
+			.flatMap((importer) -> StringUtils.commaDelimitedListToSet(springFactories.getProperty(importer)).stream())
+			.collect(Collectors.toCollection(TreeSet::new));
 	}
 
 	private Stream<String> findMetaImporters(AnnotationMetadata annotationMetadata) {
-		return annotationMetadata.getAnnotationTypes().stream()
-				.filter((annotationType) -> isAutoConfigurationImporter(annotationType, annotationMetadata));
+		return annotationMetadata.getAnnotationTypes()
+			.stream()
+			.filter((annotationType) -> isAutoConfigurationImporter(annotationType, annotationMetadata));
 	}
 
 	private boolean isAutoConfigurationImporter(String annotationType, AnnotationMetadata metadata) {
 		return metadata.getMetaAnnotationTypes(annotationType)
-				.contains("org.springframework.boot.autoconfigure.ImportAutoConfiguration");
+			.contains("org.springframework.boot.autoconfigure.ImportAutoConfiguration");
 	}
 
 }

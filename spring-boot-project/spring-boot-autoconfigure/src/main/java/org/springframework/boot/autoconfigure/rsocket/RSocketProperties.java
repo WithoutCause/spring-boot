@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,17 +19,22 @@ package org.springframework.boot.autoconfigure.rsocket;
 import java.net.InetAddress;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.rsocket.server.RSocketServer;
+import org.springframework.boot.web.server.Ssl;
+import org.springframework.util.unit.DataSize;
 
 /**
- * {@link ConfigurationProperties properties} for RSocket support.
+ * {@link ConfigurationProperties Properties} for RSocket support.
  *
  * @author Brian Clozel
+ * @author Chris Bono
  * @since 2.2.0
  */
 @ConfigurationProperties("spring.rsocket")
 public class RSocketProperties {
 
+	@NestedConfigurationProperty
 	private final Server server = new Server();
 
 	public Server getServer() {
@@ -58,6 +63,17 @@ public class RSocketProperties {
 		 * transport).
 		 */
 		private String mappingPath;
+
+		/**
+		 * Maximum transmission unit. Frames larger than the specified value are
+		 * fragmented.
+		 */
+		private DataSize fragmentSize;
+
+		@NestedConfigurationProperty
+		private Ssl ssl;
+
+		private final Spec spec = new Spec();
 
 		public Integer getPort() {
 			return this.port;
@@ -89,6 +105,82 @@ public class RSocketProperties {
 
 		public void setMappingPath(String mappingPath) {
 			this.mappingPath = mappingPath;
+		}
+
+		public DataSize getFragmentSize() {
+			return this.fragmentSize;
+		}
+
+		public void setFragmentSize(DataSize fragmentSize) {
+			this.fragmentSize = fragmentSize;
+		}
+
+		public Ssl getSsl() {
+			return this.ssl;
+		}
+
+		public void setSsl(Ssl ssl) {
+			this.ssl = ssl;
+		}
+
+		public Spec getSpec() {
+			return this.spec;
+		}
+
+		public static class Spec {
+
+			/**
+			 * Sub-protocols to use in websocket handshake signature.
+			 */
+			private String protocols;
+
+			/**
+			 * Maximum allowable frame payload length.
+			 */
+			private DataSize maxFramePayloadLength = DataSize.ofBytes(65536);
+
+			/**
+			 * Whether to proxy websocket ping frames or respond to them.
+			 */
+			private boolean handlePing;
+
+			/**
+			 * Whether the websocket compression extension is enabled.
+			 */
+			private boolean compress;
+
+			public String getProtocols() {
+				return this.protocols;
+			}
+
+			public void setProtocols(String protocols) {
+				this.protocols = protocols;
+			}
+
+			public DataSize getMaxFramePayloadLength() {
+				return this.maxFramePayloadLength;
+			}
+
+			public void setMaxFramePayloadLength(DataSize maxFramePayloadLength) {
+				this.maxFramePayloadLength = maxFramePayloadLength;
+			}
+
+			public boolean isHandlePing() {
+				return this.handlePing;
+			}
+
+			public void setHandlePing(boolean handlePing) {
+				this.handlePing = handlePing;
+			}
+
+			public boolean isCompress() {
+				return this.compress;
+			}
+
+			public void setCompress(boolean compress) {
+				this.compress = compress;
+			}
+
 		}
 
 	}

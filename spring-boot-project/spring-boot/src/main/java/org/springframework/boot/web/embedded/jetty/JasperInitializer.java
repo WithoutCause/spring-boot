@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,9 @@ import java.net.URLConnection;
 import java.net.URLStreamHandler;
 import java.net.URLStreamHandlerFactory;
 
-import javax.servlet.ServletContainerInitializer;
-
-import org.apache.catalina.webresources.TomcatURLStreamHandlerFactory;
+import jakarta.servlet.ServletContainerInitializer;
+import org.eclipse.jetty.ee10.webapp.WebAppContext;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
-import org.eclipse.jetty.webapp.WebAppContext;
 
 import org.springframework.util.ClassUtils;
 
@@ -71,7 +69,7 @@ class JasperInitializer extends AbstractLifeCycle {
 		}
 		if (ClassUtils.isPresent("org.apache.catalina.webresources.TomcatURLStreamHandlerFactory",
 				getClass().getClassLoader())) {
-			TomcatURLStreamHandlerFactory.register();
+			org.apache.catalina.webresources.TomcatURLStreamHandlerFactory.register();
 		}
 		else {
 			try {
@@ -85,24 +83,15 @@ class JasperInitializer extends AbstractLifeCycle {
 		try {
 			Thread.currentThread().setContextClassLoader(this.context.getClassLoader());
 			try {
-				setExtendedListenerTypes(true);
+				this.context.getContext().setExtendedListenerTypes(true);
 				this.initializer.onStartup(null, this.context.getServletContext());
 			}
 			finally {
-				setExtendedListenerTypes(false);
+				this.context.getContext().setExtendedListenerTypes(false);
 			}
 		}
 		finally {
 			Thread.currentThread().setContextClassLoader(classLoader);
-		}
-	}
-
-	private void setExtendedListenerTypes(boolean extended) {
-		try {
-			this.context.getServletContext().setExtendedListenerTypes(extended);
-		}
-		catch (NoSuchMethodError ex) {
-			// Not available on Jetty 8
 		}
 	}
 

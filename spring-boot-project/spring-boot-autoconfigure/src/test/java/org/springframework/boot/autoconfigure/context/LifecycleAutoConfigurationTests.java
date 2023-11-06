@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,10 +32,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author Andy Wilkinson
  */
-public class LifecycleAutoConfigurationTests {
+class LifecycleAutoConfigurationTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(LifecycleAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(LifecycleAutoConfiguration.class));
 
 	@Test
 	void lifecycleProcessorIsConfiguredWithDefaultTimeout() {
@@ -47,7 +47,7 @@ public class LifecycleAutoConfigurationTests {
 	}
 
 	@Test
-	void lifecycleProcessorIsConfiguredWithCustomDefaultTimeout() {
+	void lifecycleProcessorIsConfiguredWithCustomTimeout() {
 		this.contextRunner.withPropertyValues("spring.lifecycle.timeout-per-shutdown-phase=15s").run((context) -> {
 			assertThat(context).hasBean(AbstractApplicationContext.LIFECYCLE_PROCESSOR_BEAN_NAME);
 			Object processor = context.getBean(AbstractApplicationContext.LIFECYCLE_PROCESSOR_BEAN_NAME);
@@ -56,14 +56,15 @@ public class LifecycleAutoConfigurationTests {
 	}
 
 	@Test
-	void lifecycleProcessorIsConfiguredWithCustomDefaultTimeoutInAChildContext() {
+	void lifecycleProcessorIsConfiguredWithCustomTimeoutInAChildContext() {
 		new ApplicationContextRunner().run((parent) -> {
-			this.contextRunner.withParent(parent).withPropertyValues("spring.lifecycle.timeout-per-shutdown-phase=15s")
-					.run((child) -> {
-						assertThat(child).hasBean(AbstractApplicationContext.LIFECYCLE_PROCESSOR_BEAN_NAME);
-						Object processor = child.getBean(AbstractApplicationContext.LIFECYCLE_PROCESSOR_BEAN_NAME);
-						assertThat(processor).extracting("timeoutPerShutdownPhase").isEqualTo(15000L);
-					});
+			this.contextRunner.withParent(parent)
+				.withPropertyValues("spring.lifecycle.timeout-per-shutdown-phase=15s")
+				.run((child) -> {
+					assertThat(child).hasBean(AbstractApplicationContext.LIFECYCLE_PROCESSOR_BEAN_NAME);
+					Object processor = child.getBean(AbstractApplicationContext.LIFECYCLE_PROCESSOR_BEAN_NAME);
+					assertThat(processor).extracting("timeoutPerShutdownPhase").isEqualTo(15000L);
+				});
 		});
 	}
 

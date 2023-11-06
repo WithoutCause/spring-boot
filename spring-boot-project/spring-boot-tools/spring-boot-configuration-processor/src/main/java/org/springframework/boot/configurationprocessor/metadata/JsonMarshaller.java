@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,11 +52,11 @@ public class JsonMarshaller {
 			outputStream.write(object.toString(2).getBytes(StandardCharsets.UTF_8));
 		}
 		catch (Exception ex) {
-			if (ex instanceof IOException) {
-				throw (IOException) ex;
+			if (ex instanceof IOException ioException) {
+				throw ioException;
 			}
-			if (ex instanceof RuntimeException) {
-				throw (RuntimeException) ex;
+			if (ex instanceof RuntimeException runtimeException) {
+				throw runtimeException;
 			}
 			throw new IllegalStateException(ex);
 		}
@@ -105,6 +105,7 @@ public class JsonMarshaller {
 			deprecation.setLevel(deprecationJsonObject.optString("level", null));
 			deprecation.setReason(deprecationJsonObject.optString("reason", null));
 			deprecation.setReplacement(deprecationJsonObject.optString("replacement", null));
+			deprecation.setSince(deprecationJsonObject.optString("since", null));
 			return deprecation;
 		}
 		return object.optBoolean("deprecated") ? new ItemDeprecation() : null;
@@ -150,8 +151,7 @@ public class JsonMarshaller {
 	}
 
 	private Object readItemValue(Object value) throws Exception {
-		if (value instanceof JSONArray) {
-			JSONArray array = (JSONArray) value;
+		if (value instanceof JSONArray array) {
 			Object[] content = new Object[array.length()];
 			for (int i = 0; i < array.length(); i++) {
 				content[i] = array.get(i);

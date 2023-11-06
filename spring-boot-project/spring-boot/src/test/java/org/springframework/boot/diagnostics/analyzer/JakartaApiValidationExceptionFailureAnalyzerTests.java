@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.validation.annotation.Validated;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatException;
 
 /**
  * Tests for {@link ValidationExceptionFailureAnalyzer}
@@ -37,9 +37,8 @@ class JakartaApiValidationExceptionFailureAnalyzerTests {
 
 	@Test
 	void validatedPropertiesTest() {
-		assertThatExceptionOfType(Exception.class)
-				.isThrownBy(() -> new AnnotationConfigApplicationContext(TestConfiguration.class).close())
-				.satisfies((ex) -> assertThat(new ValidationExceptionFailureAnalyzer().analyze(ex)).isNotNull());
+		assertThatException().isThrownBy(() -> new AnnotationConfigApplicationContext(TestConfiguration.class).close())
+			.satisfies((ex) -> assertThat(new ValidationExceptionFailureAnalyzer().analyze(ex)).isNotNull());
 	}
 
 	@Test

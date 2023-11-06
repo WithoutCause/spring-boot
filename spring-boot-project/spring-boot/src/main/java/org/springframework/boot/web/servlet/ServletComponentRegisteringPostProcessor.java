@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,17 @@ package org.springframework.boot.web.servlet;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
+import org.springframework.aot.generate.GenerationContext;
+import org.springframework.aot.hint.MemberCategory;
+import org.springframework.aot.hint.TypeReference;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
+import org.springframework.beans.factory.aot.BeanFactoryInitializationAotContribution;
+import org.springframework.beans.factory.aot.BeanFactoryInitializationAotProcessor;
+import org.springframework.beans.factory.aot.BeanFactoryInitializationCode;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -40,7 +47,8 @@ import org.springframework.web.context.WebApplicationContext;
  * @see ServletComponentScan
  * @see ServletComponentScanRegistrar
  */
-class ServletComponentRegisteringPostProcessor implements BeanFactoryPostProcessor, ApplicationContextAware {
+class ServletComponentRegisteringPostProcessor
+		implements BeanFactoryPostProcessor, ApplicationContextAware, BeanFactoryInitializationAotProcessor {
 
 	private static final List<ServletComponentHandler> HANDLERS;
 
@@ -72,18 +80,17 @@ class ServletComponentRegisteringPostProcessor implements BeanFactoryPostProcess
 
 	private void scanPackage(ClassPathScanningCandidateComponentProvider componentProvider, String packageToScan) {
 		for (BeanDefinition candidate : componentProvider.findCandidateComponents(packageToScan)) {
-			if (candidate instanceof AnnotatedBeanDefinition) {
+			if (candidate instanceof AnnotatedBeanDefinition annotatedBeanDefinition) {
 				for (ServletComponentHandler handler : HANDLERS) {
-					handler.handle(((AnnotatedBeanDefinition) candidate),
-							(BeanDefinitionRegistry) this.applicationContext);
+					handler.handle(annotatedBeanDefinition, (BeanDefinitionRegistry) this.applicationContext);
 				}
 			}
 		}
 	}
 
 	private boolean isRunningInEmbeddedWebServer() {
-		return this.applicationContext instanceof WebApplicationContext
-				&& ((WebApplicationContext) this.applicationContext).getServletContext() == null;
+		return this.applicationContext instanceof WebApplicationContext webApplicationContext
+				&& webApplicationContext.getServletContext() == null;
 	}
 
 	private ClassPathScanningCandidateComponentProvider createComponentProvider() {
@@ -104,6 +111,31 @@ class ServletComponentRegisteringPostProcessor implements BeanFactoryPostProcess
 	@Override
 	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
 		this.applicationContext = applicationContext;
+	}
+
+	@Override
+	public BeanFactoryInitializationAotContribution processAheadOfTime(ConfigurableListableBeanFactory beanFactory) {
+		return new BeanFactoryInitializationAotContribution() {
+
+			@Override
+			public void applyTo(GenerationContext generationContext,
+					BeanFactoryInitializationCode beanFactoryInitializationCode) {
+				for (String beanName : beanFactory.getBeanDefinitionNames()) {
+					BeanDefinition definition = beanFactory.getBeanDefinition(beanName);
+					if (Objects.equals(definition.getBeanClassName(),
+							WebListenerHandler.ServletComponentWebListenerRegistrar.class.getName())) {
+						String listenerClassName = (String) definition.getConstructorArgumentValues()
+							.getArgumentValue(0, String.class)
+							.getValue();
+						generationContext.getRuntimeHints()
+							.reflection()
+							.registerType(TypeReference.of(listenerClassName),
+									MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
+					}
+				}
+			}
+
+		};
 	}
 
 }

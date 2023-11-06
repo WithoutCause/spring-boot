@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,24 @@
 
 package org.springframework.boot.maven;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import javax.xml.XMLConstants;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.validation.Schema;
+import javax.xml.validation.SchemaFactory;
+import javax.xml.validation.Validator;
+
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 import org.springframework.boot.loader.tools.Layer;
 import org.springframework.boot.loader.tools.Library;
@@ -45,6 +53,7 @@ import org.springframework.boot.loader.tools.layer.LibraryContentFilter;
 class CustomLayersProvider {
 
 	CustomLayers getLayers(Document document) {
+		validate(document);
 		Element root = document.getDocumentElement();
 		List<ContentSelector<String>> applicationSelectors = getApplicationSelectors(root);
 		List<ContentSelector<Library>> librarySelectors = getLibrarySelectors(root);
@@ -52,12 +61,33 @@ class CustomLayersProvider {
 		return new CustomLayers(layers, applicationSelectors, librarySelectors);
 	}
 
+	private void validate(Document document) {
+		Schema schema = loadSchema();
+		try {
+			Validator validator = schema.newValidator();
+			validator.validate(new DOMSource(document));
+		}
+		catch (SAXException | IOException ex) {
+			throw new IllegalStateException("Invalid layers.xml configuration", ex);
+		}
+	}
+
+	private Schema loadSchema() {
+		try {
+			SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+			return factory.newSchema(getClass().getResource("layers.xsd"));
+		}
+		catch (SAXException ex) {
+			throw new IllegalStateException("Unable to load layers XSD");
+		}
+	}
+
 	private List<ContentSelector<String>> getApplicationSelectors(Element root) {
-		return getSelectors(root, "application", ApplicationContentFilter::new);
+		return getSelectors(root, "application", (element) -> getSelector(element, ApplicationContentFilter::new));
 	}
 
 	private List<ContentSelector<Library>> getLibrarySelectors(Element root) {
-		return getSelectors(root, "dependencies", LibraryContentFilter::new);
+		return getSelectors(root, "dependencies", (element) -> getLibrarySelector(element, LibraryContentFilter::new));
 	}
 
 	private List<Layer> getLayers(Element root) {
@@ -65,11 +95,11 @@ class CustomLayersProvider {
 		if (layerOrder == null) {
 			return Collections.emptyList();
 		}
-		return getChildNodeTextContent(layerOrder, "layer").stream().map(Layer::new).collect(Collectors.toList());
+		return getChildNodeTextContent(layerOrder, "layer").stream().map(Layer::new).toList();
 	}
 
 	private <T> List<ContentSelector<T>> getSelectors(Element root, String elementName,
-			Function<String, ContentFilter<T>> filterFactory) {
+			Function<Element, ContentSelector<T>> selectorFactory) {
 		Element element = getChildElement(root, elementName);
 		if (element == null) {
 			return Collections.emptyList();
@@ -78,8 +108,8 @@ class CustomLayersProvider {
 		NodeList children = element.getChildNodes();
 		for (int i = 0; i < children.getLength(); i++) {
 			Node child = children.item(i);
-			if (child instanceof Element) {
-				ContentSelector<T> selector = getSelector((Element) child, filterFactory);
+			if (child instanceof Element childElement) {
+				ContentSelector<T> selector = selectorFactory.apply(childElement);
 				selectors.add(selector);
 			}
 		}
@@ -91,6 +121,28 @@ class CustomLayersProvider {
 		List<String> includes = getChildNodeTextContent(element, "include");
 		List<String> excludes = getChildNodeTextContent(element, "exclude");
 		return new IncludeExcludeContentSelector<>(layer, includes, excludes, filterFactory);
+	}
+
+	private ContentSelector<Library> getLibrarySelector(Element element,
+			Function<String, ContentFilter<Library>> filterFactory) {
+		Layer layer = new Layer(element.getAttribute("layer"));
+		List<String> includes = getChildNodeTextContent(element, "include");
+		List<String> excludes = getChildNodeTextContent(element, "exclude");
+		Element includeModuleDependencies = getChildElement(element, "includeModuleDependencies");
+		Element excludeModuleDependencies = getChildElement(element, "excludeModuleDependencies");
+		List<ContentFilter<Library>> includeFilters = includes.stream()
+			.map(filterFactory)
+			.collect(Collectors.toCollection(ArrayList::new));
+		if (includeModuleDependencies != null) {
+			includeFilters.add(Library::isLocal);
+		}
+		List<ContentFilter<Library>> excludeFilters = excludes.stream()
+			.map(filterFactory)
+			.collect(Collectors.toCollection(ArrayList::new));
+		if (excludeModuleDependencies != null) {
+			excludeFilters.add(Library::isLocal);
+		}
+		return new IncludeExcludeContentSelector<>(layer, includeFilters, excludeFilters);
 	}
 
 	private List<String> getChildNodeTextContent(Element element, String tagName) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,11 +22,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.OAuth2ResourceServerProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.config.web.server.ServerHttpSecurity.OAuth2ResourceServerSpec;
-import org.springframework.security.oauth2.server.resource.introspection.NimbusReactiveOpaqueTokenIntrospector;
 import org.springframework.security.oauth2.server.resource.introspection.ReactiveOpaqueTokenIntrospector;
+import org.springframework.security.oauth2.server.resource.introspection.SpringReactiveOpaqueTokenIntrospector;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.WebFilterChainProxy;
+
+import static org.springframework.security.config.Customizer.withDefaults;
 
 /**
  * Configures a {@link ReactiveOpaqueTokenIntrospector} when a token introspection
@@ -43,9 +46,9 @@ class ReactiveOAuth2ResourceServerOpaqueTokenConfiguration {
 
 		@Bean
 		@ConditionalOnProperty(name = "spring.security.oauth2.resourceserver.opaquetoken.introspection-uri")
-		NimbusReactiveOpaqueTokenIntrospector opaqueTokenIntrospector(OAuth2ResourceServerProperties properties) {
+		SpringReactiveOpaqueTokenIntrospector opaqueTokenIntrospector(OAuth2ResourceServerProperties properties) {
 			OAuth2ResourceServerProperties.Opaquetoken opaqueToken = properties.getOpaquetoken();
-			return new NimbusReactiveOpaqueTokenIntrospector(opaqueToken.getIntrospectionUri(),
+			return new SpringReactiveOpaqueTokenIntrospector(opaqueToken.getIntrospectionUri(),
 					opaqueToken.getClientId(), opaqueToken.getClientSecret());
 		}
 
@@ -59,8 +62,15 @@ class ReactiveOAuth2ResourceServerOpaqueTokenConfiguration {
 		@ConditionalOnBean(ReactiveOpaqueTokenIntrospector.class)
 		SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 			http.authorizeExchange((exchanges) -> exchanges.anyExchange().authenticated());
-			http.oauth2ResourceServer(OAuth2ResourceServerSpec::opaqueToken);
+			http.oauth2ResourceServer((resourceServer) -> resourceServer.opaqueToken(withDefaults()));
 			return http.build();
+		}
+
+		@Configuration(proxyBeanMethods = false)
+		@ConditionalOnMissingBean(WebFilterChainProxy.class)
+		@EnableWebFluxSecurity
+		static class EnableWebFluxSecurityConfiguration {
+
 		}
 
 	}

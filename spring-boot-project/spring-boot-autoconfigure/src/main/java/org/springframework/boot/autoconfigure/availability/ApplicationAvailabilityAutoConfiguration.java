@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,25 @@
 
 package org.springframework.boot.autoconfigure.availability;
 
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.availability.ApplicationAvailability;
 import org.springframework.boot.availability.ApplicationAvailabilityBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * {@link org.springframework.boot.autoconfigure.EnableAutoConfiguration} for
  * {@link ApplicationAvailabilityBean}.
  *
  * @author Brian Clozel
+ * @author Taeik Lim
  * @since 2.3.0
  */
-@Configuration(proxyBeanMethods = false)
+@AutoConfiguration
 public class ApplicationAvailabilityAutoConfiguration {
 
 	@Bean
+	@ConditionalOnMissingBean(ApplicationAvailability.class)
 	public ApplicationAvailabilityBean applicationAvailability() {
 		return new ApplicationAvailabilityBean();
 	}

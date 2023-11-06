@@ -5,14 +5,14 @@ plugins {
 	id("org.springframework.boot") version "{gradle-project-version}"
 }
 
-tasks.getByName<BootJar>("bootJar") {
-	mainClassName = "com.example.ExampleApplication"
+tasks.named<BootJar>("bootJar") {
+	mainClass.set("com.example.ExampleApplication")
 }
 
 // tag::layered[]
-tasks.getByName<BootJar>("bootJar") {
+tasks.named<BootJar>("bootJar") {
 	layered {
-		isEnabled = false
+		enabled.set(false)
 	}
 }
 // end::layered[]

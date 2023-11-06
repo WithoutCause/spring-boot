@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,33 +36,42 @@ import org.springframework.util.Assert;
  */
 class Context {
 
-	private final File jarFile;
+	private final File archiveFile;
 
 	private final File workingDir;
 
-	private String relativeDir;
+	private final String relativeDir;
 
 	/**
 	 * Create a new {@link Context} instance.
 	 */
 	Context() {
-		this(getSourceJarFile(), Paths.get(".").toAbsolutePath().normalize().toFile());
+		this(getSourceArchiveFile(), Paths.get(".").toAbsolutePath().normalize().toFile());
 	}
 
 	/**
 	 * Create a new {@link Context} instance with the specified value.
-	 * @param jarFile the source jar file
+	 * @param archiveFile the source archive file
 	 * @param workingDir the working directory
 	 */
-	Context(File jarFile, File workingDir) {
-		Assert.state(jarFile != null && jarFile.isFile() && jarFile.exists()
-				&& jarFile.getName().toLowerCase().endsWith(".jar"), "Unable to find source JAR");
-		this.jarFile = jarFile;
+	Context(File archiveFile, File workingDir) {
+		Assert.state(isExistingFile(archiveFile), "Unable to find source archive");
+		Assert.state(isJarOrWar(archiveFile), "Source archive " + archiveFile + " must end with .jar or .war");
+		this.archiveFile = archiveFile;
 		this.workingDir = workingDir;
-		this.relativeDir = deduceRelativeDir(jarFile.getParentFile(), this.workingDir);
+		this.relativeDir = deduceRelativeDir(archiveFile.getParentFile(), this.workingDir);
 	}
 
-	private static File getSourceJarFile() {
+	private boolean isExistingFile(File archiveFile) {
+		return archiveFile != null && archiveFile.isFile() && archiveFile.exists();
+	}
+
+	private boolean isJarOrWar(File jarFile) {
+		String name = jarFile.getName().toLowerCase();
+		return name.endsWith(".jar") || name.endsWith(".war");
+	}
+
+	private static File getSourceArchiveFile() {
 		try {
 			ProtectionDomain domain = Context.class.getProtectionDomain();
 			CodeSource codeSource = (domain != null) ? domain.getCodeSource() : null;
@@ -80,8 +89,8 @@ class Context {
 
 	private static File findSource(URL location) throws IOException, URISyntaxException {
 		URLConnection connection = location.openConnection();
-		if (connection instanceof JarURLConnection) {
-			return getRootJarFile(((JarURLConnection) connection).getJarFile());
+		if (connection instanceof JarURLConnection jarURLConnection) {
+			return getRootJarFile(jarURLConnection.getJarFile());
 		}
 		return new File(location.toURI());
 	}
@@ -106,11 +115,11 @@ class Context {
 	}
 
 	/**
-	 * Return the source jar file that is running in tools mode.
-	 * @return the jar file
+	 * Return the source archive file that is running in tools mode.
+	 * @return the archive file
 	 */
-	File getJarFile() {
-		return this.jarFile;
+	File getArchiveFile() {
+		return this.archiveFile;
 	}
 
 	/**
@@ -122,11 +131,11 @@ class Context {
 	}
 
 	/**
-	 * Return the directory relative to {@link #getWorkingDir()} that contains the jar or
-	 * {@code null} if none relative directory can be deduced.
+	 * Return the directory relative to {@link #getWorkingDir()} that contains the archive
+	 * or {@code null} if none relative directory can be deduced.
 	 * @return the relative dir ending in {@code /} or {@code null}
 	 */
-	String getRelativeJarDir() {
+	String getRelativeArchiveDir() {
 		return this.relativeDir;
 	}
 
