@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -333,14 +333,34 @@ class BraveAutoConfigurationTests {
 				.getBean(CompositeSpanHandlerComponentsConfiguration.class);
 			CompositeSpanHandler composite = context.getBean(CompositeSpanHandler.class);
 			assertThat(composite).extracting("spanFilters")
-				.asList()
+				.asInstanceOf(InstanceOfAssertFactories.LIST)
 				.containsExactly(components.filter1, components.filter2);
 			assertThat(composite).extracting("filters")
-				.asList()
+				.asInstanceOf(InstanceOfAssertFactories.LIST)
 				.containsExactly(components.predicate2, components.predicate1);
 			assertThat(composite).extracting("reporters")
-				.asList()
+				.asInstanceOf(InstanceOfAssertFactories.LIST)
 				.containsExactly(components.reporter1, components.reporter3, components.reporter2);
+		});
+	}
+
+	@Test
+	void shouldDisablePropagationIfTracingIsDisabled() {
+		this.contextRunner.withPropertyValues("management.tracing.enabled=false").run((context) -> {
+			assertThat(context).hasSingleBean(Factory.class);
+			Factory factory = context.getBean(Factory.class);
+			Propagation<String> propagation = factory.get();
+			assertThat(propagation.keys()).isEmpty();
+		});
+	}
+
+	@Test
+	void shouldConfigureTaggedFields() {
+		this.contextRunner.withPropertyValues("management.tracing.baggage.tag-fields=t1").run((context) -> {
+			BraveTracer braveTracer = context.getBean(BraveTracer.class);
+			assertThat(braveTracer).extracting("braveBaggageManager.tagFields")
+				.asInstanceOf(InstanceOfAssertFactories.list(String.class))
+				.containsExactly("t1");
 		});
 	}
 
@@ -433,7 +453,7 @@ class BraveAutoConfigurationTests {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	private static class CustomConfiguration {
+	private static final class CustomConfiguration {
 
 		@Bean
 		Tracing customTracing() {

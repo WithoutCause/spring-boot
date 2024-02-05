@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -225,6 +225,16 @@ class BaggagePropagationIntegrationTests {
 						org.springframework.boot.actuate.autoconfigure.tracing.OpenTelemetryAutoConfiguration.class))
 					.withPropertyValues("management.tracing.propagation.type=B3_MULTI",
 							"management.tracing.baggage.remote-fields=x-vcap-request-id,country-code,bp",
+							"management.tracing.baggage.correlation.fields=country-code,bp");
+			}
+		},
+
+		BRAVE_LOCAL_FIELDS {
+			@Override
+			public ApplicationContextRunner get() {
+				return new ApplicationContextRunner()
+					.withConfiguration(AutoConfigurations.of(BraveAutoConfiguration.class))
+					.withPropertyValues("management.tracing.baggage.local-fields=country-code,bp",
 							"management.tracing.baggage.correlation.fields=country-code,bp");
 			}
 		}

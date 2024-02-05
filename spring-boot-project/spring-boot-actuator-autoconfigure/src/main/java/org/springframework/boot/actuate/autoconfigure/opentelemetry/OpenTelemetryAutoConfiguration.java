@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ public class OpenTelemetryAutoConfiguration {
 	/**
 	 * Default value for application name if {@code spring.application.name} is not set.
 	 */
-	private static final String DEFAULT_APPLICATION_NAME = "application";
+	private static final String DEFAULT_APPLICATION_NAME = "unknown_service";
 
 	private static final AttributeKey<String> ATTRIBUTE_KEY_SERVICE_NAME = AttributeKey.stringKey("service.name");
 

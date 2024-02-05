@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ import org.springframework.boot.loader.log.DebugLogger;
  * contains. Unlike {@link java.util.zip.ZipFile}, this implementation can load content
  * from a zip file nested inside another file as long as the entry is not compressed.
  * <p>
- * In order to reduce memory consumption, this implementation stores only the the hash of
- * the entry names, the central directory offsets and the original positions. Entries are
+ * In order to reduce memory consumption, this implementation stores only the hash of the
+ * entry names, the central directory offsets and the original positions. Entries are
  * stored internally in {@code hashCode} order so that a binary search can be used to
  * quickly find an entry by name or determine if the zip file doesn't have a given entry.
  * <p>
@@ -72,6 +72,8 @@ public final class ZipContent implements Closeable {
 
 	private final Source source;
 
+	private final Kind kind;
+
 	private final FileChannelDataBlock data;
 
 	private final long centralDirectoryPos;
@@ -94,10 +96,11 @@ public final class ZipContent implements Closeable {
 
 	private SoftReference<Map<Class<?>, Object>> info;
 
-	private ZipContent(Source source, FileChannelDataBlock data, long centralDirectoryPos, long commentPos,
+	private ZipContent(Source source, Kind kind, FileChannelDataBlock data, long centralDirectoryPos, long commentPos,
 			long commentLength, int[] lookupIndexes, int[] nameHashLookups, int[] relativeCentralDirectoryOffsetLookups,
 			NameOffsetLookups nameOffsetLookups, boolean hasJarSignatureFile) {
 		this.source = source;
+		this.kind = kind;
 		this.data = data;
 		this.centralDirectoryPos = centralDirectoryPos;
 		this.commentPos = commentPos;
@@ -107,6 +110,15 @@ public final class ZipContent implements Closeable {
 		this.relativeCentralDirectoryOffsetLookups = relativeCentralDirectoryOffsetLookups;
 		this.nameOffsetLookups = nameOffsetLookups;
 		this.hasJarSignatureFile = hasJarSignatureFile;
+	}
+
+	/**
+	 * Return the kind of content that was loaded.
+	 * @return the content kind
+	 * @since 3.2.2
+	 */
+	public Kind getKind() {
+		return this.kind;
 	}
 
 	/**
@@ -381,6 +393,30 @@ public final class ZipContent implements Closeable {
 	}
 
 	/**
+	 * Zip content kinds.
+	 *
+	 * @since 3.2.2
+	 */
+	public enum Kind {
+
+		/**
+		 * Content from a standard zip file.
+		 */
+		ZIP,
+
+		/**
+		 * Content from nested zip content.
+		 */
+		NESTED_ZIP,
+
+		/**
+		 * Content from a nested zip directory.
+		 */
+		NESTED_DIRECTORY
+
+	}
+
+	/**
 	 * The source of {@link ZipContent}. Used as a cache key.
 	 *
 	 * @param path the path of the zip or container zip
@@ -451,7 +487,7 @@ public final class ZipContent implements Closeable {
 			this.cursor++;
 		}
 
-		private ZipContent finish(long commentPos, long commentLength, boolean hasJarSignatureFile) {
+		private ZipContent finish(Kind kind, long commentPos, long commentLength, boolean hasJarSignatureFile) {
 			if (this.cursor != this.nameHashLookups.length) {
 				this.nameHashLookups = Arrays.copyOf(this.nameHashLookups, this.cursor);
 				this.relativeCentralDirectoryOffsetLookups = Arrays.copyOf(this.relativeCentralDirectoryOffsetLookups,
@@ -463,7 +499,7 @@ public final class ZipContent implements Closeable {
 			for (int i = 0; i < size; i++) {
 				lookupIndexes[this.index[i]] = i;
 			}
-			return new ZipContent(this.source, this.data, this.centralDirectoryPos, commentPos, commentLength,
+			return new ZipContent(this.source, kind, this.data, this.centralDirectoryPos, commentPos, commentLength,
 					lookupIndexes, this.nameHashLookups, this.relativeCentralDirectoryOffsetLookups,
 					this.nameOffsetLookups, hasJarSignatureFile);
 		}
@@ -525,7 +561,7 @@ public final class ZipContent implements Closeable {
 
 		private static ZipContent loadNonNested(Source source) throws IOException {
 			debug.log("Loading non-nested zip '%s'", source.path());
-			return openAndLoad(source, new FileChannelDataBlock(source.path()));
+			return openAndLoad(source, Kind.ZIP, new FileChannelDataBlock(source.path()));
 		}
 
 		private static ZipContent loadNestedZip(Source source, Entry entry) throws IOException {
@@ -534,13 +570,13 @@ public final class ZipContent implements Closeable {
 					.formatted(source.nestedEntryName(), source.path()));
 			}
 			debug.log("Loading nested zip entry '%s' from '%s'", source.nestedEntryName(), source.path());
-			return openAndLoad(source, entry.getContent());
+			return openAndLoad(source, Kind.NESTED_ZIP, entry.getContent());
 		}
 
-		private static ZipContent openAndLoad(Source source, FileChannelDataBlock data) throws IOException {
+		private static ZipContent openAndLoad(Source source, Kind kind, FileChannelDataBlock data) throws IOException {
 			try {
 				data.open();
-				return loadContent(source, data);
+				return loadContent(source, kind, data);
 			}
 			catch (IOException | RuntimeException ex) {
 				data.close();
@@ -548,7 +584,7 @@ public final class ZipContent implements Closeable {
 			}
 		}
 
-		private static ZipContent loadContent(Source source, FileChannelDataBlock data) throws IOException {
+		private static ZipContent loadContent(Source source, Kind kind, FileChannelDataBlock data) throws IOException {
 			ZipEndOfCentralDirectoryRecord.Located locatedEocd = ZipEndOfCentralDirectoryRecord.load(data);
 			ZipEndOfCentralDirectoryRecord eocd = locatedEocd.endOfCentralDirectoryRecord();
 			long eocdPos = locatedEocd.pos();
@@ -556,13 +592,16 @@ public final class ZipContent implements Closeable {
 			Zip64EndOfCentralDirectoryRecord zip64Eocd = Zip64EndOfCentralDirectoryRecord.load(data, zip64Locator);
 			data = data.slice(getStartOfZipContent(data, eocd, zip64Eocd));
 			long centralDirectoryPos = (zip64Eocd != null) ? zip64Eocd.offsetToStartOfCentralDirectory()
-					: eocd.offsetToStartOfCentralDirectory();
+					: Integer.toUnsignedLong(eocd.offsetToStartOfCentralDirectory());
 			long numberOfEntries = (zip64Eocd != null) ? zip64Eocd.totalNumberOfCentralDirectoryEntries()
-					: eocd.totalNumberOfCentralDirectoryEntries();
-			if (numberOfEntries > 0xFFFFFFFFL) {
+					: Short.toUnsignedInt(eocd.totalNumberOfCentralDirectoryEntries());
+			if (numberOfEntries < 0) {
+				throw new IllegalStateException("Invalid number of zip entries in " + source);
+			}
+			if (numberOfEntries > Integer.MAX_VALUE) {
 				throw new IllegalStateException("Too many zip entries in " + source);
 			}
-			Loader loader = new Loader(source, null, data, centralDirectoryPos, (int) (numberOfEntries & 0xFFFFFFFFL));
+			Loader loader = new Loader(source, null, data, centralDirectoryPos, (int) numberOfEntries);
 			ByteBuffer signatureNameSuffixBuffer = ByteBuffer.allocate(SIGNATURE_SUFFIX.length);
 			boolean hasJarSignatureFile = false;
 			long pos = centralDirectoryPos;
@@ -582,7 +621,7 @@ public final class ZipContent implements Closeable {
 				pos += centralRecord.size();
 			}
 			long commentPos = locatedEocd.pos() + ZipEndOfCentralDirectoryRecord.COMMENT_OFFSET;
-			return loader.finish(commentPos, eocd.commentLength(), hasJarSignatureFile);
+			return loader.finish(kind, commentPos, eocd.commentLength(), hasJarSignatureFile);
 		}
 
 		/**
@@ -618,7 +657,7 @@ public final class ZipContent implements Closeable {
 
 		private static ZipContent loadNestedDirectory(Source source, ZipContent zip, Entry directoryEntry)
 				throws IOException {
-			debug.log("Loading nested directry entry '%s' from '%s'", source.nestedEntryName(), source.path());
+			debug.log("Loading nested directory entry '%s' from '%s'", source.nestedEntryName(), source.path());
 			if (!source.nestedEntryName().endsWith("/")) {
 				throw new IllegalArgumentException("Nested entry name must end with '/'");
 			}
@@ -634,15 +673,12 @@ public final class ZipContent implements Closeable {
 							.load(zip.data, pos);
 						long namePos = pos + ZipCentralDirectoryFileHeaderRecord.FILE_NAME_OFFSET;
 						short nameLen = centralRecord.fileNameLength();
-						if (ZipString.startsWith(loader.buffer, zip.data, namePos, nameLen, META_INF) != -1) {
-							loader.add(centralRecord, pos, false);
-						}
-						else if (ZipString.startsWith(loader.buffer, zip.data, namePos, nameLen, directoryName) != -1) {
+						if (ZipString.startsWith(loader.buffer, zip.data, namePos, nameLen, directoryName) != -1) {
 							loader.add(centralRecord, pos, true);
 						}
 					}
 				}
-				return loader.finish(zip.commentPos, zip.commentLength, zip.hasJarSignatureFile);
+				return loader.finish(Kind.NESTED_DIRECTORY, zip.commentPos, zip.commentLength, zip.hasJarSignatureFile);
 			}
 			catch (IOException | RuntimeException ex) {
 				zip.data.close();

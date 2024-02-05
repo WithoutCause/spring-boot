@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -332,7 +332,10 @@ public class WebFluxAutoConfiguration {
 		public WebSessionManager webSessionManager(ObjectProvider<WebSessionIdResolver> webSessionIdResolver) {
 			DefaultWebSessionManager webSessionManager = new DefaultWebSessionManager();
 			Duration timeout = this.serverProperties.getReactive().getSession().getTimeout();
-			webSessionManager.setSessionStore(new MaxIdleTimeInMemoryWebSessionStore(timeout));
+			int maxSessions = this.serverProperties.getReactive().getSession().getMaxSessions();
+			MaxIdleTimeInMemoryWebSessionStore sessionStore = new MaxIdleTimeInMemoryWebSessionStore(timeout);
+			sessionStore.setMaxSessions(maxSessions);
+			webSessionManager.setSessionStore(sessionStore);
 			webSessionIdResolver.ifAvailable(webSessionManager::setSessionIdResolver);
 			return webSessionManager;
 		}

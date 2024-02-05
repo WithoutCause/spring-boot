@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ import org.springframework.util.ReflectionUtils.FieldCallback;
  *
  * @author Phillip Webb
  * @author Andy Wilkinson
+ * @author Moritz Halbritter
  * @since 1.4.2
  * @see ResetMocksTestExecutionListener
  */
@@ -57,6 +58,7 @@ public class MockitoTestExecutionListener extends AbstractTestExecutionListener 
 
 	@Override
 	public void prepareTestInstance(TestContext testContext) throws Exception {
+		closeMocks(testContext);
 		initMocks(testContext);
 		injectFields(testContext);
 	}
@@ -65,6 +67,7 @@ public class MockitoTestExecutionListener extends AbstractTestExecutionListener 
 	public void beforeTestMethod(TestContext testContext) throws Exception {
 		if (Boolean.TRUE.equals(
 				testContext.getAttribute(DependencyInjectionTestExecutionListener.REINJECT_DEPENDENCIES_ATTRIBUTE))) {
+			closeMocks(testContext);
 			initMocks(testContext);
 			reinjectFields(testContext);
 		}
@@ -72,15 +75,24 @@ public class MockitoTestExecutionListener extends AbstractTestExecutionListener 
 
 	@Override
 	public void afterTestMethod(TestContext testContext) throws Exception {
-		Object mocks = testContext.getAttribute(MOCKS_ATTRIBUTE_NAME);
-		if (mocks instanceof AutoCloseable closeable) {
-			closeable.close();
-		}
+		closeMocks(testContext);
+	}
+
+	@Override
+	public void afterTestClass(TestContext testContext) throws Exception {
+		closeMocks(testContext);
 	}
 
 	private void initMocks(TestContext testContext) {
 		if (hasMockitoAnnotations(testContext)) {
 			testContext.setAttribute(MOCKS_ATTRIBUTE_NAME, MockitoAnnotations.openMocks(testContext.getTestInstance()));
+		}
+	}
+
+	private void closeMocks(TestContext testContext) throws Exception {
+		Object mocks = testContext.getAttribute(MOCKS_ATTRIBUTE_NAME);
+		if (mocks instanceof AutoCloseable closeable) {
+			closeable.close();
 		}
 	}
 
@@ -121,12 +133,12 @@ public class MockitoTestExecutionListener extends AbstractTestExecutionListener 
 	/**
 	 * {@link FieldCallback} to collect Mockito annotations.
 	 */
-	private static class MockitoAnnotationCollection implements FieldCallback {
+	private static final class MockitoAnnotationCollection implements FieldCallback {
 
 		private final Set<Annotation> annotations = new LinkedHashSet<>();
 
 		@Override
-		public void doWith(Field field) throws IllegalArgumentException, IllegalAccessException {
+		public void doWith(Field field) throws IllegalArgumentException {
 			for (Annotation annotation : field.getDeclaredAnnotations()) {
 				if (annotation.annotationType().getName().startsWith("org.mockito")) {
 					this.annotations.add(annotation);

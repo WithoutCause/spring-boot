@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,10 +23,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.Cleaner.Cleanable;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.List;
+import java.util.UUID;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.assertj.core.extractor.Extractors;
@@ -105,9 +110,28 @@ class NestedJarFileTests {
 	void createWhenNestedJarDirectoryOpensJar() throws IOException {
 		try (NestedJarFile jar = new NestedJarFile(this.file, "d/")) {
 			assertThat(jar.getName()).isEqualTo(this.file.getAbsolutePath() + "!/d/");
-			assertThat(jar.size()).isEqualTo(3);
-			assertThat(jar.stream().map(JarEntry::getName)).containsExactly("META-INF/", "META-INF/MANIFEST.MF",
-					"9.dat");
+			assertThat(jar.size()).isEqualTo(1);
+			assertThat(jar.stream().map(JarEntry::getName)).containsExactly("9.dat");
+		}
+	}
+
+	@Test
+	void getManifestWhenNestedJarReturnsManifestOfNestedJar() throws Exception {
+		try (JarFile jar = new JarFile(this.file)) {
+			try (NestedJarFile nestedJar = new NestedJarFile(this.file, "nested.jar")) {
+				Manifest manifest = nestedJar.getManifest();
+				assertThat(manifest).isNotEqualTo(jar.getManifest());
+				assertThat(manifest.getMainAttributes().getValue("Built-By")).isEqualTo("j2");
+			}
+		}
+	}
+
+	@Test
+	void getManifestWhenNestedJarDirectoryReturnsManifestOfParent() throws Exception {
+		try (JarFile jar = new JarFile(this.file)) {
+			try (NestedJarFile nestedJar = new NestedJarFile(this.file, "d/")) {
+				assertThat(nestedJar.getManifest()).isEqualTo(jar.getManifest());
+			}
 		}
 	}
 
@@ -364,6 +388,41 @@ class NestedJarFileTests {
 				.containsExactly("META-INF/:META-INF/", "META-INF/MANIFEST.MF:META-INF/MANIFEST.MF",
 						"multi-release.dat:META-INF/versions/%1$d/multi-release.dat"
 							.formatted(TestJar.MULTI_JAR_VERSION));
+		}
+	}
+
+	@Test // gh-39166
+	void getCommentAlignsWithJdkJar() throws Exception {
+		File file = new File(this.tempDir, "testcomments.jar");
+		try (JarOutputStream jar = new JarOutputStream(new FileOutputStream(file))) {
+			jar.putNextEntry(new ZipEntry("BOOT-INF/"));
+			jar.closeEntry();
+			jar.putNextEntry(new ZipEntry("BOOT-INF/classes/"));
+			jar.closeEntry();
+			for (int i = 0; i < 5; i++) {
+				ZipEntry entry = new ZipEntry("BOOT-INF/classes/T" + i + ".class");
+				entry.setComment("T" + i);
+				jar.putNextEntry(entry);
+				jar.write(UUID.randomUUID().toString().getBytes());
+				jar.closeEntry();
+			}
+		}
+		List<String> jdk = collectComments(new JarFile(file));
+		List<String> nested = collectComments(new NestedJarFile(file, "BOOT-INF/classes/"));
+		assertThat(nested).isEqualTo(jdk);
+	}
+
+	private List<String> collectComments(JarFile jarFile) throws IOException {
+		try (jarFile) {
+			List<String> comments = new ArrayList<>();
+			Enumeration<JarEntry> entries = jarFile.entries();
+			while (entries.hasMoreElements()) {
+				String comment = entries.nextElement().getComment();
+				if (comment != null) {
+					comments.add(comment);
+				}
+			}
+			return comments;
 		}
 	}
 

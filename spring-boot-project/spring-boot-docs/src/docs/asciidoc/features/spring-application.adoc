@@ -356,7 +356,7 @@ TIP: If you want to know on which HTTP port the application is running, get the 
 === Application Startup tracking
 During the application startup, the `SpringApplication` and the `ApplicationContext` perform many tasks related to the application lifecycle,
 the beans lifecycle or even processing application events.
-With {spring-framework-api}/core/metrics/ApplicationStartup.html[`ApplicationStartup`], Spring Framework  {spring-framework-docs}/core.html#context-functionality-startup[allows you to track the application startup sequence with `StartupStep` objects].
+With {spring-framework-api}/core/metrics/ApplicationStartup.html[`ApplicationStartup`], Spring Framework  {spring-framework-docs}/core/beans/context-introduction.html#context-functionality-startup[allows you to track the application startup sequence with `StartupStep` objects].
 This data can be collected for profiling purposes, or just to have a better understanding of an application startup process.
 
 You can choose an `ApplicationStartup` implementation when setting up the `SpringApplication` instance.
@@ -384,6 +384,9 @@ Spring Boot can also be configured to expose a {spring-boot-actuator-restapi-doc
 === Virtual threads
 If you're running on Java 21 or up, you can enable virtual threads by setting the property configprop:spring.threads.virtual.enabled[] to `true`.
 
+Before turning on this option for your application, you should consider https://docs.oracle.com/en/java/javase/21/core/virtual-threads.html[reading the official Java virtual threads documentation].
+In some cases, applications can experience lower throughput because of "Pinned Virtual Threads"; this page also explains how to detect such cases with JDK Flight Recorder or the `jcmd` CLI.
+
 WARNING: One side effect of virtual threads is that these threads are daemon threads.
 A JVM will exit if there are no non-daemon threads.
 This behavior can be a problem when you rely on, e.g. `@Scheduled` beans to keep your application alive.
@@ -391,3 +394,4 @@ If you use virtual threads, the scheduler thread is a virtual thread and therefo
 This does not only affect scheduling, but can be the case with other technologies, too!
 To keep the JVM running in all cases, it is recommended to set the property configprop:spring.main.keep-alive[] to `true`.
 This ensures that the JVM is kept alive, even if all threads are virtual threads.
+

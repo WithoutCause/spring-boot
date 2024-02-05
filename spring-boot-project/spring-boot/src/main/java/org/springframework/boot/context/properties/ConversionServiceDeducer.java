@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.core.convert.converter.GenericConverter;
+import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.format.Formatter;
 import org.springframework.format.FormatterRegistry;
 import org.springframework.format.support.FormattingConversionService;
@@ -63,6 +64,9 @@ class ConversionServiceDeducer {
 		ConverterBeans converterBeans = new ConverterBeans(applicationContext);
 		if (!converterBeans.isEmpty()) {
 			FormattingConversionService beansConverterService = new FormattingConversionService();
+			DefaultConversionService.addCollectionConverters(beansConverterService);
+			beansConverterService
+				.addConverter(new ConfigurationPropertiesCharSequenceToObjectConverter(beansConverterService));
 			converterBeans.addTo(beansConverterService);
 			conversionServices.add(beansConverterService);
 		}

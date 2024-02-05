@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,15 +20,13 @@ import java.util.List;
 
 import javax.sql.DataSource;
 
-import org.springframework.batch.core.configuration.ListableJobLocator;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.configuration.support.DefaultBatchConfiguration;
-import org.springframework.batch.core.converter.JobParametersConverter;
 import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.launch.JobLauncher;
-import org.springframework.batch.core.launch.JobOperator;
-import org.springframework.batch.core.launch.support.SimpleJobOperator;
+import org.springframework.batch.core.repository.ExecutionContextSerializer;
 import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.repository.dao.DefaultExecutionContextSerializer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -66,6 +64,7 @@ import org.springframework.util.StringUtils;
  * @author Eddú Meléndez
  * @author Kazuki Shimizu
  * @author Mahmoud Ben Hassine
+ * @author Lars Uffmann
  * @since 1.0.0
  */
 @AutoConfiguration(after = { HibernateJpaAutoConfiguration.class, TransactionAutoConfiguration.class })
@@ -82,9 +81,9 @@ public class BatchAutoConfiguration {
 	public JobLauncherApplicationRunner jobLauncherApplicationRunner(JobLauncher jobLauncher, JobExplorer jobExplorer,
 			JobRepository jobRepository, BatchProperties properties) {
 		JobLauncherApplicationRunner runner = new JobLauncherApplicationRunner(jobLauncher, jobExplorer, jobRepository);
-		String jobNames = properties.getJob().getName();
-		if (StringUtils.hasText(jobNames)) {
-			runner.setJobName(jobNames);
+		String jobName = properties.getJob().getName();
+		if (StringUtils.hasText(jobName)) {
+			runner.setJobName(jobName);
 		}
 		return runner;
 	}
@@ -93,20 +92,6 @@ public class BatchAutoConfiguration {
 	@ConditionalOnMissingBean(ExitCodeGenerator.class)
 	public JobExecutionExitCodeGenerator jobExecutionExitCodeGenerator() {
 		return new JobExecutionExitCodeGenerator();
-	}
-
-	@Bean
-	@ConditionalOnMissingBean(JobOperator.class)
-	public SimpleJobOperator jobOperator(ObjectProvider<JobParametersConverter> jobParametersConverter,
-			JobExplorer jobExplorer, JobLauncher jobLauncher, ListableJobLocator jobRegistry,
-			JobRepository jobRepository) {
-		SimpleJobOperator factory = new SimpleJobOperator();
-		factory.setJobExplorer(jobExplorer);
-		factory.setJobLauncher(jobLauncher);
-		factory.setJobRegistry(jobRegistry);
-		factory.setJobRepository(jobRepository);
-		jobParametersConverter.ifAvailable(factory::setJobParametersConverter);
-		return factory;
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -120,13 +105,18 @@ public class BatchAutoConfiguration {
 
 		private final List<BatchConversionServiceCustomizer> batchConversionServiceCustomizers;
 
+		private final ExecutionContextSerializer executionContextSerializer;
+
 		SpringBootBatchConfiguration(DataSource dataSource, @BatchDataSource ObjectProvider<DataSource> batchDataSource,
 				PlatformTransactionManager transactionManager, BatchProperties properties,
-				ObjectProvider<BatchConversionServiceCustomizer> batchConversionServiceCustomizers) {
+				ObjectProvider<BatchConversionServiceCustomizer> batchConversionServiceCustomizers,
+				ObjectProvider<ExecutionContextSerializer> executionContextSerializer) {
 			this.dataSource = batchDataSource.getIfAvailable(() -> dataSource);
 			this.transactionManager = transactionManager;
 			this.properties = properties;
 			this.batchConversionServiceCustomizers = batchConversionServiceCustomizers.orderedStream().toList();
+			this.executionContextSerializer = executionContextSerializer
+				.getIfAvailable(DefaultExecutionContextSerializer::new);
 		}
 
 		@Override
@@ -158,6 +148,11 @@ public class BatchAutoConfiguration {
 				customizer.customize(conversionService);
 			}
 			return conversionService;
+		}
+
+		@Override
+		protected ExecutionContextSerializer getExecutionContextSerializer() {
+			return this.executionContextSerializer;
 		}
 
 	}

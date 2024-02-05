@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,6 +83,7 @@ import org.springframework.core.convert.converter.GenericConverter;
 import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.MutablePropertySources;
+import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.core.io.ClassPathResource;
@@ -654,6 +655,41 @@ class ConfigurationPropertiesTests {
 	}
 
 	@Test
+	void loadShouldUseStringConverterBeanWhenValueIsCharSequence() {
+		this.context.register(PersonConverterConfiguration.class, PersonProperties.class);
+		PropertySource<?> testProperties = new MapPropertySource("test", Map.of("test.person", new CharSequence() {
+
+			private final String value = "John Smith";
+
+			@Override
+			public int length() {
+				return this.value.length();
+			}
+
+			@Override
+			public char charAt(int index) {
+				return this.value.charAt(index);
+			}
+
+			@Override
+			public CharSequence subSequence(int start, int end) {
+				return this.value.subSequence(start, end);
+			}
+
+			@Override
+			public String toString() {
+				return this.value;
+			}
+
+		}));
+		this.context.getEnvironment().getPropertySources().addLast(testProperties);
+		this.context.refresh();
+		Person person = this.context.getBean(PersonProperties.class).getPerson();
+		assertThat(person.firstName).isEqualTo("John");
+		assertThat(person.lastName).isEqualTo("Smith");
+	}
+
+	@Test
 	void loadWhenBeanFactoryConversionServiceAndConverterBeanCanUseBeanFactoryConverter() {
 		DefaultConversionService conversionService = new DefaultConversionService();
 		conversionService.addConverter(new AlienConverter());
@@ -677,6 +713,20 @@ class ConfigurationPropertiesTests {
 		assertThat(properties.getPerson().firstName).isEqualTo("John");
 		assertThat(properties.getPerson().lastName).isEqualTo("Smith");
 		assertThat(properties.getAlien().name).isEqualTo("rennaT flA");
+	}
+
+	@Test // gh-38734
+	void loadWhenBeanFactoryConversionServiceAndConverterBeanCanUseConverterBeanWithCollections() {
+		DefaultConversionService conversionService = new DefaultConversionService();
+		conversionService.addConverter(new PersonConverter());
+		this.context.getBeanFactory().setConversionService(conversionService);
+		load(new Class<?>[] { AlienConverterConfiguration.class, PersonAndAliensProperties.class },
+				"test.person=John Smith", "test.aliens=Alf Tanner,Gilbert");
+		PersonAndAliensProperties properties = this.context.getBean(PersonAndAliensProperties.class);
+		assertThat(properties.getPerson().firstName).isEqualTo("John");
+		assertThat(properties.getPerson().lastName).isEqualTo("Smith");
+		assertThat(properties.getAliens().get(0).name).isEqualTo("rennaT flA");
+		assertThat(properties.getAliens().get(1).name).isEqualTo("trebliG");
 	}
 
 	@Test
@@ -2091,6 +2141,32 @@ class ConfigurationPropertiesTests {
 	}
 
 	@EnableConfigurationProperties
+	@ConfigurationProperties(prefix = "test")
+	static class PersonAndAliensProperties {
+
+		private Person person;
+
+		private List<Alien> aliens;
+
+		Person getPerson() {
+			return this.person;
+		}
+
+		void setPerson(Person person) {
+			this.person = person;
+		}
+
+		List<Alien> getAliens() {
+			return this.aliens;
+		}
+
+		void setAliens(List<Alien> aliens) {
+			this.aliens = aliens;
+		}
+
+	}
+
+	@EnableConfigurationProperties
 	@ConfigurationProperties(prefix = "sample")
 	static class MapWithNumericKeyProperties {
 
@@ -3051,7 +3127,7 @@ class ConfigurationPropertiesTests {
 
 	}
 
-	static record NestedRecord(String name) {
+	record NestedRecord(String name) {
 	}
 
 	@EnableConfigurationProperties

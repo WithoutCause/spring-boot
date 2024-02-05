@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -127,15 +127,15 @@ class NestedFileSystemTests {
 	}
 
 	@Test
-	void getPathWhenFirstIsNullThrowsException() {
-		assertThatIllegalArgumentException().isThrownBy(() -> this.fileSystem.getPath(null))
-			.withMessage("Nested paths must contain a single element");
+	void getPathWhenFirstIsNull() {
+		Path path = this.fileSystem.getPath(null);
+		assertThat(path.toString()).endsWith(File.separator + "test.jar");
 	}
 
 	@Test
-	void getPathWhenFirstIsBlankThrowsException() {
-		assertThatIllegalArgumentException().isThrownBy(() -> this.fileSystem.getPath(""))
-			.withMessage("Nested paths must contain a single element");
+	void getPathWhenFirstIsBlank() {
+		Path path = this.fileSystem.getPath("");
+		assertThat(path.toString()).endsWith(File.separator + "test.jar");
 	}
 
 	@Test
@@ -167,7 +167,7 @@ class NestedFileSystemTests {
 	void newWatchServiceThrowsException() {
 		assertThatExceptionOfType(UnsupportedOperationException.class)
 			.isThrownBy(() -> this.fileSystem.newWatchService())
-			.withMessage("Nested paths do not support the WacherService");
+			.withMessage("Nested paths do not support the WatchService");
 	}
 
 	@Test

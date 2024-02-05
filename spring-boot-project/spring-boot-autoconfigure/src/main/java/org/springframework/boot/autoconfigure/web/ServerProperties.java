@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -329,6 +329,11 @@ public class ServerProperties {
 			@DurationUnit(ChronoUnit.SECONDS)
 			private Duration timeout = Duration.ofMinutes(30);
 
+			/**
+			 * The maximum number of sessions that can be stored.
+			 */
+			private int maxSessions = 10000;
+
 			@NestedConfigurationProperty
 			private final Cookie cookie = new Cookie();
 
@@ -338,6 +343,14 @@ public class ServerProperties {
 
 			public void setTimeout(Duration timeout) {
 				this.timeout = timeout;
+			}
+
+			public int getMaxSessions() {
+				return this.maxSessions;
+			}
+
+			public void setMaxSessions(int maxSessions) {
+				this.maxSessions = maxSessions;
 			}
 
 			public Cookie getCookie() {
@@ -905,6 +918,11 @@ public class ServerProperties {
 			 */
 			private int minSpare = 10;
 
+			/**
+			 * Maximum capacity of the thread pool's backing queue.
+			 */
+			private int maxQueueCapacity = 2147483647;
+
 			public int getMax() {
 				return this.max;
 			}
@@ -919,6 +937,14 @@ public class ServerProperties {
 
 			public void setMinSpare(int minSpare) {
 				this.minSpare = minSpare;
+			}
+
+			public int getMaxQueueCapacity() {
+				return this.maxQueueCapacity;
+			}
+
+			public void setMaxQueueCapacity(int maxQueueCapacity) {
+				this.maxQueueCapacity = maxQueueCapacity;
 			}
 
 		}

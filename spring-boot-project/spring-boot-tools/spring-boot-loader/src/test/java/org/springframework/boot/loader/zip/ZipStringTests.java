@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,7 +86,10 @@ class ZipStringTests {
 			case DATA_BLOCK -> {
 				ByteArrayDataBlock dataBlock = new ByteArrayDataBlock(source.getBytes(StandardCharsets.UTF_8));
 				assertThat(ZipString.hash(null, dataBlock, 0, (int) dataBlock.size(), addEndSlash)).isEqualTo(expected);
-
+			}
+			case SINGLE_BYTE_READ_DATA_BLOCK -> {
+				ByteArrayDataBlock dataBlock = new ByteArrayDataBlock(source.getBytes(StandardCharsets.UTF_8), 1);
+				assertThat(ZipString.hash(null, dataBlock, 0, (int) dataBlock.size(), addEndSlash)).isEqualTo(expected);
 			}
 		}
 	}
@@ -165,9 +168,7 @@ class ZipStringTests {
 	@Test
 	void zipStringWhenMultiCodePointAtBufferBoundary() throws Exception {
 		StringBuilder source = new StringBuilder();
-		for (int i = 0; i < ZipString.BUFFER_SIZE - 1; i++) {
-			source.append("A");
-		}
+		source.append("A".repeat(ZipString.BUFFER_SIZE - 1));
 		source.append("\u1EFF");
 		String charSequence = source.toString();
 		source.append("suffix");
@@ -187,7 +188,7 @@ class ZipStringTests {
 
 	enum HashSourceType {
 
-		STRING, CHAR_SEQUENCE, DATA_BLOCK
+		STRING, CHAR_SEQUENCE, DATA_BLOCK, SINGLE_BYTE_READ_DATA_BLOCK
 
 	}
 

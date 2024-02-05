@@ -310,6 +310,12 @@
       "defaultValue": false
     },
     {
+      "name": "management.info.process.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether to enable process info.",
+      "defaultValue": false
+    },
+    {
       "name": "management.metrics.binders.files.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable files metrics.",
@@ -2211,6 +2217,12 @@
       }
     },
     {
+      "name": "management.tracing.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether auto-configuration of tracing is enabled to export and propagate traces.",
+      "defaultValue": true
+    },
+    {
       "name": "management.tracing.propagation.consume",
       "defaultValue": [
         "W3C",
@@ -2223,6 +2235,12 @@
       "defaultValue": [
         "W3C"
       ]
+    },
+    {
+      "name": "micrometer.observations.annotations.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether auto-configuration of Micrometer annotations is enabled.",
+      "defaultValue": false
     }
   ],
   "hints": [

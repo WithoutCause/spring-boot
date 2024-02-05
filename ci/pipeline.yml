@@ -1,6 +1,6 @@
 anchors:
   git-repo-resource-source: &git-repo-resource-source
-    uri: ((github-repo))
+    uri: ((github-repository-uri))
     username: ((github-username))
     password: ((github-ci-release-token))
     branch: ((branch))
@@ -8,8 +8,8 @@ anchors:
     username: ((docker-hub-username))
     password: ((docker-hub-password))
   ci-registry-image-resource-source: &ci-registry-image-resource-source
-    username: ((docker-hub-username))
-    password: ((docker-hub-password))
+    username: ((harbor-registry-username))
+    password: ((harbor-registry-password))
     tag: ((milestone))
   gradle-enterprise-task-params: &gradle-enterprise-task-params
     GRADLE_ENTERPRISE_ACCESS_KEY: ((gradle_enterprise_secret_access_key))
@@ -22,8 +22,8 @@ anchors:
     DOCKER_HUB_PASSWORD: ((docker-hub-password))
     DOCKER_HUB_AUTH: ((docker-hub-auth))
   github-task-params: &github-task-params
-    GITHUB_REPO: spring-boot
-    GITHUB_ORGANIZATION: spring-projects
+    GITHUB_REPO: ((github-repository-name))
+    GITHUB_ORGANIZATION: ((github-organization-name))
     GITHUB_PASSWORD: ((github-ci-release-token))
     GITHUB_USERNAME: ((github-username))
     MILESTONE: ((milestone))
@@ -58,7 +58,7 @@ anchors:
   artifactory-repo-put-params: &artifactory-repo-put-params
     signing_key: ((signing-key))
     signing_passphrase: ((signing-passphrase))
-    repo: libs-snapshot-local
+    repo: ((artifactory-snapshot-repository))
     folder: distribution-repository
     build_uri: "https://ci.spring.io/teams/${BUILD_TEAM_NAME}/pipelines/${BUILD_PIPELINE_NAME}/jobs/${BUILD_JOB_NAME}/builds/${BUILD_NAME}"
     build_number: "${BUILD_JOB_NAME}-${BUILD_NAME}"
@@ -99,31 +99,31 @@ resource_types:
   type: registry-image
   source:
     <<: *registry-image-resource-source
-    repository: concourse/registry-image-resource
-    tag: 1.7.1
+    repository: ((dockerhub-proxy-cache))concourse/registry-image-resource
+    tag: 1.9.0
 - name: artifactory-resource
   type: registry-image
   source:
     <<: *registry-image-resource-source
-    repository: springio/artifactory-resource
+    repository: ((dockerhub-proxy-cache))springio/artifactory-resource
     tag: 0.0.18
 - name: github-status-resource
   type: registry-image
   source:
     <<: *registry-image-resource-source
-    repository: dpb587/github-status-resource
+    repository: ((dockerhub-proxy-cache))dpb587/github-status-resource
     tag: master
 - name: slack-notification
   type: registry-image
   source:
     <<: *registry-image-resource-source
-    repository: cfcommunity/slack-notification-resource
+    repository: ((dockerhub-proxy-cache))cfcommunity/slack-notification-resource
     tag: latest
 - name: github-release
   type: registry-image
   source:
     <<: *registry-image-resource-source
-    repository: concourse/github-release-resource
+    repository: ((dockerhub-proxy-cache))concourse/github-release-resource
     tag: 1.8.0
 resources:
 - name: git-repo
@@ -143,8 +143,8 @@ resources:
   type: github-release
   icon: briefcase-download-outline
   source:
-    owner: spring-projects
-    repository: spring-boot
+    owner: ((github-organization-name))
+    repository: ((github-repository-name))
     access_token: ((github-ci-release-token))
     pre_release: true
     release: false
@@ -152,15 +152,15 @@ resources:
   type: github-release
   icon: briefcase-download
   source:
-    owner: spring-projects
-    repository: spring-boot
+    owner: ((github-organization-name))
+    repository: ((github-repository-name))
     access_token: ((github-ci-release-token))
     pre_release: false
 - name: ci-images-git-repo
   type: git
   icon: github
   source:
-    uri: ((github-repo))
+    uri: ((github-repository-uri))
     branch: ((branch))
     paths: ["ci/images/*"]
 - name: ci-image
@@ -168,18 +168,18 @@ resources:
   icon: docker
   source:
     <<: *ci-registry-image-resource-source
-    repository: ((docker-hub-organization))/spring-boot-ci
+    repository: projects.registry.vmware.com/spring-oss-ci/spring-boot-ci
 - name: ci-image-jdk21
   type: registry-image
   icon: docker
   source:
     <<: *ci-registry-image-resource-source
-    repository: ((docker-hub-organization))/spring-boot-ci-jdk21
+    repository: projects.registry.vmware.com/spring-oss-ci/spring-boot-ci-jdk21
 - name: paketo-builder-base-image
   type: registry-image
   icon: docker
   source:
-    repository: paketobuildpacks/builder-jammy-base
+    repository: ((dockerhub-proxy-cache))paketobuildpacks/builder-jammy-base
     tag: latest
 - name: artifactory-repo
   type: artifactory-resource
@@ -195,7 +195,7 @@ resources:
   type: github-status-resource
   icon: eye-check-outline
   source:
-    repository: ((github-repo-name))
+    repository: ((github-organization-name))/((github-repository-name))
     access_token: ((github-ci-status-token))
     branch: ((branch))
     context: build
@@ -203,7 +203,7 @@ resources:
   type: github-status-resource
   icon: eye-check-outline
   source:
-    repository: ((github-repo-name))
+    repository: ((github-organization-name))/((github-repository-name))
     access_token: ((github-ci-status-token))
     branch: ((branch))
     context: jdk21-build
@@ -242,6 +242,7 @@ jobs:
         image: ci-image
       vars:
         ci-image-name: ci-image
+        dockerhub-proxy-cache: ((dockerhub-proxy-cache))
     - task: build-ci-image-jdk21
       privileged: true
       file: git-repo/ci/tasks/build-ci-image.yml
@@ -249,6 +250,7 @@ jobs:
         image: ci-image-jdk21
       vars:
         ci-image-name: ci-image-jdk21
+        dockerhub-proxy-cache: ((dockerhub-proxy-cache))
   - in_parallel:
     - put: ci-image
       params:
@@ -402,13 +404,14 @@ jobs:
     timeout: ((task-timeout))
     file: git-repo/ci/tasks/stage.yml
     params:
+      FINAL_RELEASE: ((final-release))
       RELEASE_TYPE: M
       <<: *gradle-enterprise-task-params
       <<: *docker-hub-task-params
   - put: artifactory-repo
     params:
       <<: *artifactory-repo-put-params
-      repo: libs-staging-local
+      repo: ((artifactory-staging-repository))
     get_params:
       threads: 8
   - put: git-repo
@@ -425,13 +428,14 @@ jobs:
     timeout: ((task-timeout))
     file: git-repo/ci/tasks/stage.yml
     params:
+      FINAL_RELEASE: ((final-release))
       RELEASE_TYPE: RC
       <<: *gradle-enterprise-task-params
       <<: *docker-hub-task-params
   - put: artifactory-repo
     params:
       <<: *artifactory-repo-put-params
-      repo: libs-staging-local
+      repo: ((artifactory-staging-repository))
     get_params:
       threads: 8
   - put: git-repo
@@ -448,13 +452,14 @@ jobs:
     timeout: ((task-timeout))
     file: git-repo/ci/tasks/stage.yml
     params:
+      FINAL_RELEASE: ((final-release))
       RELEASE_TYPE: RELEASE
       <<: *gradle-enterprise-task-params
       <<: *docker-hub-task-params
   - put: artifactory-repo
     params:
       <<: *artifactory-repo-put-params
-      repo: libs-staging-local
+      repo: ((artifactory-staging-repository))
     get_params:
       threads: 8
   - put: git-repo
@@ -473,11 +478,15 @@ jobs:
       save_build_info: true
   - task: promote
     file: git-repo/ci/tasks/promote.yml
+    vars:
+      dockerhub-proxy-cache: ((dockerhub-proxy-cache))
     params:
       RELEASE_TYPE: M
       <<: *artifactory-task-params
   - task: generate-changelog
     file: git-repo/ci/tasks/generate-changelog.yml
+    vars:
+      dockerhub-proxy-cache: ((dockerhub-proxy-cache))
     params:
       RELEASE_TYPE: M
       GITHUB_USERNAME: ((github-username))
@@ -500,11 +509,15 @@ jobs:
       save_build_info: true
   - task: promote
     file: git-repo/ci/tasks/promote.yml
+    vars:
+      dockerhub-proxy-cache: ((dockerhub-proxy-cache))
     params:
       RELEASE_TYPE: RC
       <<: *artifactory-task-params
   - task: generate-changelog
     file: git-repo/ci/tasks/generate-changelog.yml
+    vars:
+      dockerhub-proxy-cache: ((dockerhub-proxy-cache))
     params:
       RELEASE_TYPE: RC
       GITHUB_USERNAME: ((github-username))
@@ -528,6 +541,8 @@ jobs:
       threads: 8
   - task: promote
     file: git-repo/ci/tasks/promote.yml
+    vars:
+      dockerhub-proxy-cache: ((dockerhub-proxy-cache))
     params:
       RELEASE_TYPE: RELEASE
       <<: *artifactory-task-params
@@ -562,6 +577,8 @@ jobs:
       save_build_info: true
   - task: generate-changelog
     file: git-repo/ci/tasks/generate-changelog.yml
+    vars:
+      dockerhub-proxy-cache: ((dockerhub-proxy-cache))
     params:
       RELEASE_TYPE: RELEASE
       GITHUB_USERNAME: ((github-username))
@@ -582,6 +599,8 @@ jobs:
         save_build_info: true
     - task: publish-to-sdkman
       file: git-repo/ci/tasks/publish-to-sdkman.yml
+      vars:
+        dockerhub-proxy-cache: ((dockerhub-proxy-cache))
       params:
         <<: *sdkman-task-params
         RELEASE_TYPE: RELEASE

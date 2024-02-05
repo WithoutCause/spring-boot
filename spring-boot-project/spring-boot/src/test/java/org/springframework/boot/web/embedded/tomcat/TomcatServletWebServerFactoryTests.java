@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -237,11 +237,23 @@ class TomcatServletWebServerFactoryTests extends AbstractServletWebServerFactory
 	void tomcatAdditionalConnectors() {
 		TomcatServletWebServerFactory factory = getFactory();
 		Connector[] connectors = new Connector[4];
-		Arrays.setAll(connectors, (i) -> new Connector());
+		Arrays.setAll(connectors, (i) -> {
+			Connector connector = new Connector();
+			connector.setPort(0);
+			return connector;
+		});
 		factory.addAdditionalTomcatConnectors(connectors);
 		this.webServer = factory.getWebServer();
-		Map<Service, Connector[]> connectorsByService = ((TomcatWebServer) this.webServer).getServiceConnectors();
+		Map<Service, Connector[]> connectorsByService = new HashMap<>(
+				((TomcatWebServer) this.webServer).getServiceConnectors());
 		assertThat(connectorsByService.values().iterator().next()).hasSize(connectors.length + 1);
+		this.webServer.start();
+		this.webServer.stop();
+		connectorsByService.forEach((service, serviceConnectors) -> {
+			for (Connector connector : serviceConnectors) {
+				assertThat(connector.getProtocolHandler()).extracting("endpoint.serverSock").isNull();
+			}
+		});
 	}
 
 	@Test
@@ -728,7 +740,7 @@ class TomcatServletWebServerFactoryTests extends AbstractServletWebServerFactory
 		return ((TomcatWebServer) this.webServer).getStartedLogMessage();
 	}
 
-	private static class RememberingHostnameVerifier implements HostnameVerifier {
+	private static final class RememberingHostnameVerifier implements HostnameVerifier {
 
 		private volatile String lastPrincipal;
 

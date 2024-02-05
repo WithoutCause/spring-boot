@@ -19,11 +19,11 @@ This is controlled through two external properties:
 
 [[howto.data-initialization.using-hibernate]]
 === Initialize a Database Using Hibernate
-You can set `spring.jpa.hibernate.ddl-auto` explicitly and the standard Hibernate property values are `none`, `validate`, `update`, `create`, and `create-drop`.
+You can set `spring.jpa.hibernate.ddl-auto` explicitly to one of the standard Hibernate property values which are `none`, `validate`, `update`, `create`, and `create-drop`.
 Spring Boot chooses a default value for you based on whether it thinks your database is embedded.
 It defaults to `create-drop` if no schema manager has been detected or `none` in all other cases.
 An embedded database is detected by looking at the `Connection` type and JDBC url.
-`hsqldb`, `h2`, and `derby` are candidates, and others are not.
+`hsqldb`, `h2`, and `derby` are candidates, while others are not.
 Be careful when switching from in-memory to a '`real`' database that you do not make assumptions about the existence of the tables and data in the new platform.
 You either have to set `ddl-auto` explicitly or use one of the other mechanisms to initialize the database.
 
@@ -41,8 +41,8 @@ It is a Hibernate feature (and has nothing to do with Spring).
 Spring Boot can automatically create the schema (DDL scripts) of your JDBC `DataSource` or R2DBC `ConnectionFactory` and initialize its data (DML scripts).
 
 By default, it loads schema scripts from `optional:classpath*:schema.sql` and data scripts from `optional:classpath*:data.sql`.
-The locations of these schema and data scripts can customized using configprop:spring.sql.init.schema-locations[] and configprop:spring.sql.init.data-locations[] respectively.
-The `optional:` prefix means that the application will start when the files do not exist.
+The locations of these schema and data scripts can be customized using configprop:spring.sql.init.schema-locations[] and configprop:spring.sql.init.data-locations[] respectively.
+The `optional:` prefix means that the application will start even when the files do not exist.
 To have the application fail to start when the files are absent, remove the `optional:` prefix.
 
 In addition, Spring Boot processes the `optional:classpath*:schema-$\{platform}.sql` and `optional:classpath*:data-$\{platform}.sql` files (if present), where `$\{platform}` is the value of configprop:spring.sql.init.platform[].
@@ -62,8 +62,13 @@ While we do not recommend using multiple data source initialization technologies
 This will defer data source initialization until after any `EntityManagerFactory` beans have been created and initialized.
 `schema.sql` can then be used to make additions to any schema creation performed by Hibernate and `data.sql` can be used to populate it.
 
+NOTE: The initialization scripts support `--` for single line comments and `/++*++ ++*++/` for block comments.
+Other comment formats are not supported.
+
 If you are using a <<howto#howto.data-initialization.migration-tool,Higher-level Database Migration Tool>>, like Flyway or Liquibase, you should use them alone to create and initialize the schema.
 Using the basic `schema.sql` and `data.sql` scripts alongside Flyway or Liquibase is not recommended and support will be removed in a future release.
+
+If you need to initialize test data using a higher-level database migration tool, please see the sections about <<howto#howto.data-initialization.migration-tool.flyway-tests, Flyway>> and <<howto#howto.data-initialization.migration-tool.liquibase-tests, Liquibase>>.
 
 
 
@@ -182,6 +187,55 @@ Setting either `spring.liquibase.url` or `spring.liquibase.user` is sufficient t
 If any of the three properties has not been set, the value of its equivalent `spring.datasource` property will be used.
 
 See {spring-boot-autoconfigure-module-code}/liquibase/LiquibaseProperties.java[`LiquibaseProperties`] for details about available settings such as contexts, the default schema, and others.
+
+
+
+[[howto.data-initialization.migration-tool.flyway-tests]]
+==== Use Flyway for test-only migrations
+If you want to create Flyway migrations which populate your test database, place them in `src/test/resources/db/migration`.
+A file named, for example, `src/test/resources/db/migration/V9999__test-data.sql` will be executed after your production migrations and only if you're running the tests.
+You can use this file to create the needed test data.
+This file will not be packaged in your uber jar or your container.
+
+
+
+[[howto.data-initialization.migration-tool.liquibase-tests]]
+==== Use Liquibase for test-only migrations
+If you want to create Liquibase migrations which populate your test database, you have to create a test changelog which also includes the production changelog.
+
+First, you need to configure Liquibase to use a different changelog when running the tests.
+One way to do this is to create a Spring Boot `test` profile and put the Liquibase properties in there.
+For that, create a file named `src/test/resources/application-test.properties` and put the following property in there:
+
+[source,yaml,indent=0,subs="verbatim",configprops,configblocks]
+----
+  spring:
+    liquibase:
+      change-log: "classpath:/db/changelog/db.changelog-test.yaml"
+----
+
+This configures Liquibase to use a different changelog when running in the `test` profile.
+
+Now create the changelog file at `src/test/resources/db/changelog/db.changelog-test.yaml`:
+
+[source,yaml,indent=0,subs="verbatim"]
+----
+databaseChangeLog:
+  - include:
+      file: classpath:/db/changelog/db.changelog-master.yaml
+  - changeSet:
+      runOrder: "last"
+      id: "test"
+      changes:
+        # Insert your changes here
+----
+
+This changelog will be used when the tests are run and it will not be packaged in your uber jar or your container.
+It includes the production changelog and then declares a new changeset, whose `runOrder: last` setting specifies that it runs after all the production changesets have been run.
+You can now use for example the https://docs.liquibase.com/change-types/insert.html[insert changeset] to insert data or the https://docs.liquibase.com/change-types/sql.html[sql changeset] to execute SQL directly.
+
+The last thing to do is to configure Spring Boot to activate the `test` profile when running tests.
+To do this, you can add the `@ActiveProfiles("test")` annotation to your `@SpringBootTest` annotated test classes.
 
 
 

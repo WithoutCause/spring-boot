@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
@@ -51,7 +52,7 @@ class SpringApplicationShutdownHookTests {
 	@Test
 	void shutdownHookIsNotAddedUntilContextIsRegistered() {
 		TestSpringApplicationShutdownHook shutdownHook = new TestSpringApplicationShutdownHook();
-		shutdownHook.enableShutdowHookAddition();
+		shutdownHook.enableShutdownHookAddition();
 		assertThat(shutdownHook.isRuntimeShutdownHookAdded()).isFalse();
 		ConfigurableApplicationContext context = new GenericApplicationContext();
 		shutdownHook.registerApplicationContext(context);
@@ -61,7 +62,7 @@ class SpringApplicationShutdownHookTests {
 	@Test
 	void shutdownHookIsNotAddedUntilHandlerIsRegistered() {
 		TestSpringApplicationShutdownHook shutdownHook = new TestSpringApplicationShutdownHook();
-		shutdownHook.enableShutdowHookAddition();
+		shutdownHook.enableShutdownHookAddition();
 		assertThat(shutdownHook.isRuntimeShutdownHookAdded()).isFalse();
 		shutdownHook.getHandlers().add(() -> {
 		});
@@ -74,7 +75,7 @@ class SpringApplicationShutdownHookTests {
 		shutdownHook.getHandlers().add(() -> {
 		});
 		assertThat(shutdownHook.isRuntimeShutdownHookAdded()).isFalse();
-		shutdownHook.enableShutdowHookAddition();
+		shutdownHook.enableShutdownHookAddition();
 		shutdownHook.getHandlers().add(() -> {
 		});
 		assertThat(shutdownHook.isRuntimeShutdownHookAdded()).isTrue();
@@ -112,8 +113,8 @@ class SpringApplicationShutdownHookTests {
 		closing.await();
 		Thread shutdownThread = new Thread(shutdownHook);
 		shutdownThread.start();
-		// Shutdown thread should become blocked on monitor held by context thread
-		Awaitility.await().atMost(Duration.ofSeconds(30)).until(shutdownThread::getState, State.BLOCKED::equals);
+		// Shutdown thread should start waiting for context to become inactive
+		Awaitility.await().atMost(Duration.ofSeconds(30)).until(shutdownThread::getState, State.WAITING::equals);
 		// Allow context thread to proceed, unblocking shutdown thread
 		proceedWithClose.countDown();
 		contextThread.join();
@@ -252,7 +253,7 @@ class SpringApplicationShutdownHookTests {
 			}
 			if (this.proceedWithClose != null) {
 				try {
-					this.proceedWithClose.await();
+					this.proceedWithClose.await(1, TimeUnit.MINUTES);
 				}
 				catch (InterruptedException ex) {
 					Thread.currentThread().interrupt();

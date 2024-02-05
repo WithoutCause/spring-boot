@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,7 +177,7 @@ class NestedFileSystem extends FileSystem {
 	@Override
 	public Path getPath(String first, String... more) {
 		assertNotClosed();
-		if (first == null || first.isBlank() || more.length != 0) {
+		if (more.length != 0) {
 			throw new IllegalArgumentException("Nested paths must contain a single element");
 		}
 		return new NestedPath(this, first);
@@ -195,7 +195,7 @@ class NestedFileSystem extends FileSystem {
 
 	@Override
 	public WatchService newWatchService() throws IOException {
-		throw new UnsupportedOperationException("Nested paths do not support the WacherService");
+		throw new UnsupportedOperationException("Nested paths do not support the WatchService");
 	}
 
 	@Override

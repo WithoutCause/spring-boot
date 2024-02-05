@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import java.util.concurrent.Executor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnThreading;
-import org.springframework.boot.autoconfigure.task.TaskExecutionProperties.Shutdown;
 import org.springframework.boot.autoconfigure.thread.Threading;
 import org.springframework.boot.task.SimpleAsyncTaskExecutorBuilder;
 import org.springframework.boot.task.SimpleAsyncTaskExecutorCustomizer;
@@ -44,6 +43,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *
  * @author Andy Wilkinson
  * @author Moritz Halbritter
+ * @author Yanming Zhou
  */
 class TaskExecutorConfigurations {
 
@@ -92,7 +92,7 @@ class TaskExecutorConfigurations {
 			builder = builder.maxPoolSize(pool.getMaxSize());
 			builder = builder.allowCoreThreadTimeOut(pool.isAllowCoreThreadTimeout());
 			builder = builder.keepAlive(pool.getKeepAlive());
-			Shutdown shutdown = properties.getShutdown();
+			TaskExecutionProperties.Shutdown shutdown = properties.getShutdown();
 			builder = builder.awaitTermination(shutdown.isAwaitTermination());
 			builder = builder.awaitTerminationPeriod(shutdown.getAwaitTerminationPeriod());
 			builder = builder.threadNamePrefix(properties.getThreadNamePrefix());
@@ -120,7 +120,8 @@ class TaskExecutorConfigurations {
 			builder = builder.maxPoolSize(pool.getMaxSize());
 			builder = builder.allowCoreThreadTimeOut(pool.isAllowCoreThreadTimeout());
 			builder = builder.keepAlive(pool.getKeepAlive());
-			Shutdown shutdown = properties.getShutdown();
+			builder = builder.acceptTasksAfterContextClose(pool.getShutdown().isAcceptTasksAfterContextClose());
+			TaskExecutionProperties.Shutdown shutdown = properties.getShutdown();
 			builder = builder.awaitTermination(shutdown.isAwaitTermination());
 			builder = builder.awaitTerminationPeriod(shutdown.getAwaitTerminationPeriod());
 			builder = builder.threadNamePrefix(properties.getThreadNamePrefix());
@@ -177,6 +178,10 @@ class TaskExecutorConfigurations {
 			builder = builder.taskDecorator(this.taskDecorator.getIfUnique());
 			TaskExecutionProperties.Simple simple = this.properties.getSimple();
 			builder = builder.concurrencyLimit(simple.getConcurrencyLimit());
+			TaskExecutionProperties.Shutdown shutdown = this.properties.getShutdown();
+			if (shutdown.isAwaitTermination()) {
+				builder = builder.taskTerminationTimeout(shutdown.getAwaitTerminationPeriod());
+			}
 			return builder;
 		}
 

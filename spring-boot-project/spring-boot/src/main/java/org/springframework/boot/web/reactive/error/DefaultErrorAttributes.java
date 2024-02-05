@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,6 +57,7 @@ import org.springframework.web.server.ServerWebExchange;
  * @author Stephane Nicoll
  * @author Michele Mancioppi
  * @author Scott Frederick
+ * @author Moritz Halbritter
  * @since 2.0.0
  * @see ErrorAttributes
  */
@@ -79,13 +80,16 @@ public class DefaultErrorAttributes implements ErrorAttributes {
 		if (!options.isIncluded(Include.BINDING_ERRORS)) {
 			errorAttributes.remove("errors");
 		}
+		if (!options.isIncluded(Include.PATH)) {
+			errorAttributes.remove("path");
+		}
 		return errorAttributes;
 	}
 
 	private Map<String, Object> getErrorAttributes(ServerRequest request, boolean includeStackTrace) {
 		Map<String, Object> errorAttributes = new LinkedHashMap<>();
 		errorAttributes.put("timestamp", new Date());
-		errorAttributes.put("path", request.path());
+		errorAttributes.put("path", request.requestPath().value());
 		Throwable error = getError(request);
 		MergedAnnotation<ResponseStatus> responseStatusAnnotation = MergedAnnotations
 			.from(error.getClass(), SearchStrategy.TYPE_HIERARCHY)
@@ -152,7 +156,6 @@ public class DefaultErrorAttributes implements ErrorAttributes {
 	@Override
 	public Throwable getError(ServerRequest request) {
 		Optional<Object> error = request.attribute(ERROR_INTERNAL_ATTRIBUTE);
-		error.ifPresent((value) -> request.attributes().putIfAbsent(ErrorAttributes.ERROR_ATTRIBUTE, value));
 		return (Throwable) error
 			.orElseThrow(() -> new IllegalStateException("Missing exception attribute in ServerWebExchange"));
 	}

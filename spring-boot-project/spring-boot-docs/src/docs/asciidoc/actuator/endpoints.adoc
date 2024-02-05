@@ -282,18 +282,26 @@ NOTE: The `management.endpoint.<name>` prefix uniquely identifies the endpoint t
 
 [[actuator.endpoints.sanitization]]
 === Sanitize Sensitive Values
-Information returned by the `/env`, `/configprops` and `/quartz` endpoints can be somewhat sensitive.
-All values are sanitized by default (that is replaced by `+******+`).
-Viewing original values in the unsanitized form can be configured per endpoint using the `showValues` property for that endpoint.
-This property can be configured to have the following values:
+Information returned by the `/env`, `/configprops` and `/quartz` endpoints can be sensitive, so by default values are always fully sanitized (replaced by `+******+`).
 
-- `ALWAYS` - all values are shown in their unsanitized form to all users
-- `NEVER`  - all values are always sanitized (that is replaced by `+******+`)
-- `WHEN_AUTHORIZED` - all values are shown in their unsanitized form to authorized users
+Values can only be viewed in an unsanitized form when:
+
+- The `show-values` property has been set to something other than `NEVER`
+- No custom `<<howto#howto.actuator.customizing-sanitization, SanitizingFunction>>` beans apply
+
+The `show-values` property can be configured for sanitizable endpoints to one of the following values:
+
+- `NEVER`  - values are always fully sanitized (replaced by `+******+`)
+- `ALWAYS` - values are shown to all users (as long as no `SanitizingFunction` bean applies)
+- `WHEN_AUTHORIZED` - values are shown only to authorized users (as long as no `SanitizingFunction` bean applies)
 
 For HTTP endpoints, a user is considered to be authorized if they have authenticated and have the roles configured by the endpoint's roles property.
 By default, any authenticated user is authorized.
+
 For JMX endpoints, all users are always authorized.
+
+The following example allows all users with the `admin` role to view values from the `/env` endpoint in their original form.
+Unauthorized users, or users without the `admin` role, will see only sanitized values.
 
 [source,yaml,indent=0,subs="verbatim",configprops,configblocks]
 ----
@@ -304,9 +312,7 @@ For JMX endpoints, all users are always authorized.
 	      roles: "admin"
 ----
 
-The configuration above enables the ability for all users with the `admin` role to view all values in their original form from the `/env` endpoint.
-
-NOTE: When `show-values` is set to `ALWAYS` or `WHEN_AUTHORIZED` any sanitization applied by a `<<howto#howto.actuator.customizing-sanitization, SanitizingFunction>>` will still be applied.
+NOTE: This example assumes that no `<<howto#howto.actuator.customizing-sanitization, SanitizingFunction>>` beans have been defined.
 
 
 
@@ -598,7 +604,7 @@ with the `key` listed in the following table:
 | Checks for low disk space.
 
 | `elasticsearch`
-| {spring-boot-actuator-module-code}/elasticsearch/ElasticsearchRestHealthIndicator.java[`ElasticsearchRestHealthIndicator`]
+| {spring-boot-actuator-module-code}/elasticsearch/ElasticsearchRestClientHealthIndicator.java[`ElasticsearchRestClientHealthIndicator`]
 | Checks that an Elasticsearch cluster is up.
 
 | `hazelcast`
@@ -929,7 +935,7 @@ See the section that describes <<actuator#actuator.endpoints.kubernetes-probes.l
 
 If your Actuator endpoints are deployed on a separate management context, the endpoints do not use the same web infrastructure (port, connection pools, framework components) as the main application.
 In this case, a probe check could be successful even if the main application does not work properly (for example, it cannot accept new connections).
-For this reason, is it a good idea to make the `liveness` and `readiness` health groups available on the main server port.
+For this reason, it is a good idea to make the `liveness` and `readiness` health groups available on the main server port.
 This can be done by setting the following property:
 
 [source,properties,indent=0,subs="verbatim"]
@@ -1087,12 +1093,17 @@ When appropriate, Spring auto-configures the following `InfoContributor` beans:
 | Exposes Operating System information.
 | None.
 
+| `process`
+| {spring-boot-actuator-module-code}/info/ProcessInfoContributor.java[`ProcessInfoContributor`]
+| Exposes process information.
+| None.
+
 |===
 
 Whether an individual contributor is enabled is controlled by its `management.info.<id>.enabled` property.
 Different contributors have different defaults for this property, depending on their prerequisites and the nature of the information that they expose.
 
-With no prerequisites to indicate that they should be enabled, the `env`, `java`, and `os` contributors are disabled by default.
+With no prerequisites to indicate that they should be enabled, the `env`, `java`, `os`, and `process` contributors are disabled by default.
 Each can be enabled by setting its `management.info.<id>.enabled` property to `true`.
 
 The `build` and `git` info contributors are enabled by default.
@@ -1187,6 +1198,12 @@ The `info` endpoint publishes information about your Java runtime environment, s
 [[actuator.endpoints.info.os-information]]
 ==== OS Information
 The `info` endpoint publishes information about your Operating System, see {spring-boot-module-api}/info/OsInfo.html[`OsInfo`] for more details.
+
+
+
+[[actuator.endpoints.info.process-information]]
+==== Process Information
+The `info` endpoint publishes information about your process, see {spring-boot-module-api}/info/ProcessInfo.html[`Process`] for more details.
 
 
 

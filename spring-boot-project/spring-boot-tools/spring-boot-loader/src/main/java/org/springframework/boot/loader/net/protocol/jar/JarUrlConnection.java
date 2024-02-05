@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -207,7 +207,7 @@ final class JarUrlConnection extends java.net.JarURLConnection {
 
 	@Override
 	public boolean getAllowUserInteraction() {
-		return (this.jarFileConnection != null) ? this.jarFileConnection.getAllowUserInteraction() : false;
+		return (this.jarFileConnection != null) && this.jarFileConnection.getAllowUserInteraction();
 	}
 
 	@Override
@@ -219,7 +219,7 @@ final class JarUrlConnection extends java.net.JarURLConnection {
 
 	@Override
 	public boolean getUseCaches() {
-		return (this.jarFileConnection != null) ? this.jarFileConnection.getUseCaches() : true;
+		return (this.jarFileConnection == null) || this.jarFileConnection.getUseCaches();
 	}
 
 	@Override
@@ -231,7 +231,7 @@ final class JarUrlConnection extends java.net.JarURLConnection {
 
 	@Override
 	public boolean getDefaultUseCaches() {
-		return (this.jarFileConnection != null) ? this.jarFileConnection.getDefaultUseCaches() : true;
+		return (this.jarFileConnection == null) || this.jarFileConnection.getDefaultUseCaches();
 	}
 
 	@Override
@@ -399,7 +399,7 @@ final class JarUrlConnection extends java.net.JarURLConnection {
 	 * Empty {@link URLStreamHandler} used to prevent the wrong JAR Handler from being
 	 * Instantiated and cached.
 	 */
-	private static class EmptyUrlStreamHandler extends URLStreamHandler {
+	private static final class EmptyUrlStreamHandler extends URLStreamHandler {
 
 		@Override
 		protected URLConnection openConnection(URL url) {

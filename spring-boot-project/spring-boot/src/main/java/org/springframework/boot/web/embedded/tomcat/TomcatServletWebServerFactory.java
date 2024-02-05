@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.apache.catalina.Context;
 import org.apache.catalina.Engine;
+import org.apache.catalina.Executor;
 import org.apache.catalina.Host;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
@@ -209,13 +210,21 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		tomcat.getService().addConnector(connector);
 		customizeConnector(connector);
 		tomcat.setConnector(connector);
+		registerConnectorExecutor(tomcat, connector);
 		tomcat.getHost().setAutoDeploy(false);
 		configureEngine(tomcat.getEngine());
 		for (Connector additionalConnector : this.additionalTomcatConnectors) {
 			tomcat.getService().addConnector(additionalConnector);
+			registerConnectorExecutor(tomcat, additionalConnector);
 		}
 		prepareContext(tomcat.getHost(), initializers);
 		return getTomcatWebServer(tomcat);
+	}
+
+	private void registerConnectorExecutor(Tomcat tomcat, Connector connector) {
+		if (connector.getProtocolHandler().getExecutor() instanceof Executor executor) {
+			tomcat.getService().addExecutor(executor);
+		}
 	}
 
 	private void configureEngine(Engine engine) {
@@ -342,8 +351,6 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		if (getUriEncoding() != null) {
 			connector.setURIEncoding(getUriEncoding().name());
 		}
-		// Don't bind to the socket prematurely if ApplicationContext is slow to start
-		connector.setProperty("bindOnInit", "false");
 		if (getHttp2() != null && getHttp2().isEnabled()) {
 			connector.addUpgradeProtocol(new Http2Protocol());
 		}
@@ -770,7 +777,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * {@link LifecycleListener} is used so not to interfere with Tomcat's default manager
 	 * creation logic.
 	 */
-	private static class DisablePersistSessionListener implements LifecycleListener {
+	private static final class DisablePersistSessionListener implements LifecycleListener {
 
 		@Override
 		public void lifecycleEvent(LifecycleEvent event) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,6 @@
 
 package org.springframework.boot.autoconfigure.ssl;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-
 import org.springframework.boot.autoconfigure.ssl.SslBundleProperties.Key;
 import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundleKey;
@@ -30,6 +27,7 @@ import org.springframework.boot.ssl.jks.JksSslStoreDetails;
 import org.springframework.boot.ssl.pem.PemSslStore;
 import org.springframework.boot.ssl.pem.PemSslStoreBundle;
 import org.springframework.boot.ssl.pem.PemSslStoreDetails;
+import org.springframework.core.style.ToStringCreator;
 import org.springframework.util.Assert;
 
 /**
@@ -99,23 +97,17 @@ public final class PropertiesSslBundle implements SslBundle {
 	 * @return an {@link SslBundle} instance
 	 */
 	public static SslBundle get(PemSslBundleProperties properties) {
-		try {
-			PemSslStore keyStore = getPemSslStore("keystore", properties.getKeystore());
-			if (keyStore != null) {
-				keyStore = keyStore.withAlias(properties.getKey().getAlias())
-					.withPassword(properties.getKey().getPassword());
-			}
-			PemSslStore trustStore = getPemSslStore("truststore", properties.getTruststore());
-			SslStoreBundle storeBundle = new PemSslStoreBundle(keyStore, trustStore);
-			return new PropertiesSslBundle(storeBundle, properties);
+		PemSslStore keyStore = getPemSslStore("keystore", properties.getKeystore());
+		if (keyStore != null) {
+			keyStore = keyStore.withAlias(properties.getKey().getAlias())
+				.withPassword(properties.getKey().getPassword());
 		}
-		catch (IOException ex) {
-			throw new UncheckedIOException(ex);
-		}
+		PemSslStore trustStore = getPemSslStore("truststore", properties.getTruststore());
+		SslStoreBundle storeBundle = new PemSslStoreBundle(keyStore, trustStore);
+		return new PropertiesSslBundle(storeBundle, properties);
 	}
 
-	private static PemSslStore getPemSslStore(String propertyName, PemSslBundleProperties.Store properties)
-			throws IOException {
+	private static PemSslStore getPemSslStore(String propertyName, PemSslBundleProperties.Store properties) {
 		PemSslStore pemSslStore = PemSslStore.load(asPemSslStoreDetails(properties));
 		if (properties.isVerifyKeys()) {
 			CertificateMatcher certificateMatcher = new CertificateMatcher(pemSslStore.privateKey());
@@ -149,6 +141,16 @@ public final class PropertiesSslBundle implements SslBundle {
 	private static JksSslStoreDetails asStoreDetails(JksSslBundleProperties.Store properties) {
 		return new JksSslStoreDetails(properties.getType(), properties.getProvider(), properties.getLocation(),
 				properties.getPassword());
+	}
+
+	@Override
+	public String toString() {
+		ToStringCreator creator = new ToStringCreator(this);
+		creator.append("key", this.key);
+		creator.append("options", this.options);
+		creator.append("protocol", this.protocol);
+		creator.append("stores", this.stores);
+		return creator.toString();
 	}
 
 }

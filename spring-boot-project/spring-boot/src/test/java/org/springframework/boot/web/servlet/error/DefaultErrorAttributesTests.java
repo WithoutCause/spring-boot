@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Phillip Webb
  * @author Vedran Pavic
  * @author Scott Frederick
+ * @author Moritz Halbritter
  */
 class DefaultErrorAttributesTests {
 
@@ -88,8 +89,6 @@ class DefaultErrorAttributesTests {
 		Map<String, Object> attributes = this.errorAttributes.getErrorAttributes(this.webRequest,
 				ErrorAttributeOptions.of(Include.MESSAGE));
 		assertThat(this.errorAttributes.getError(this.webRequest)).isSameAs(ex);
-		assertThat(this.webRequest.getAttribute(ErrorAttributes.ERROR_ATTRIBUTE, WebRequest.SCOPE_REQUEST))
-			.isSameAs(ex);
 		assertThat(modelAndView).isNull();
 		assertThat(attributes).doesNotContainKey("exception");
 		assertThat(attributes).containsEntry("message", "Test");
@@ -102,8 +101,6 @@ class DefaultErrorAttributesTests {
 		Map<String, Object> attributes = this.errorAttributes.getErrorAttributes(this.webRequest,
 				ErrorAttributeOptions.of(Include.MESSAGE));
 		assertThat(this.errorAttributes.getError(this.webRequest)).isSameAs(ex);
-		assertThat(this.webRequest.getAttribute(ErrorAttributes.ERROR_ATTRIBUTE, WebRequest.SCOPE_REQUEST))
-			.isSameAs(ex);
 		assertThat(attributes).doesNotContainKey("exception");
 		assertThat(attributes).containsEntry("message", "Test");
 	}
@@ -115,8 +112,6 @@ class DefaultErrorAttributesTests {
 		Map<String, Object> attributes = this.errorAttributes.getErrorAttributes(this.webRequest,
 				ErrorAttributeOptions.defaults());
 		assertThat(this.errorAttributes.getError(this.webRequest)).isSameAs(ex);
-		assertThat(this.webRequest.getAttribute(ErrorAttributes.ERROR_ATTRIBUTE, WebRequest.SCOPE_REQUEST))
-			.isSameAs(ex);
 		assertThat(attributes).doesNotContainKey("exception");
 		assertThat(attributes).doesNotContainKey("message");
 	}
@@ -166,8 +161,6 @@ class DefaultErrorAttributesTests {
 		Map<String, Object> attributes = this.errorAttributes.getErrorAttributes(this.webRequest,
 				ErrorAttributeOptions.of(Include.MESSAGE));
 		assertThat(this.errorAttributes.getError(this.webRequest)).isSameAs(wrapped);
-		assertThat(this.webRequest.getAttribute(ErrorAttributes.ERROR_ATTRIBUTE, WebRequest.SCOPE_REQUEST))
-			.isSameAs(wrapped);
 		assertThat(attributes).doesNotContainKey("exception");
 		assertThat(attributes).containsEntry("message", "Test");
 	}
@@ -179,8 +172,6 @@ class DefaultErrorAttributesTests {
 		Map<String, Object> attributes = this.errorAttributes.getErrorAttributes(this.webRequest,
 				ErrorAttributeOptions.of(Include.MESSAGE));
 		assertThat(this.errorAttributes.getError(this.webRequest)).isSameAs(error);
-		assertThat(this.webRequest.getAttribute(ErrorAttributes.ERROR_ATTRIBUTE, WebRequest.SCOPE_REQUEST))
-			.isSameAs(error);
 		assertThat(attributes).doesNotContainKey("exception");
 		assertThat(attributes).containsEntry("message", "Test error");
 	}
@@ -259,11 +250,27 @@ class DefaultErrorAttributesTests {
 	}
 
 	@Test
-	void path() {
+	void shouldIncludePathByDefault() {
 		this.request.setAttribute("jakarta.servlet.error.request_uri", "path");
 		Map<String, Object> attributes = this.errorAttributes.getErrorAttributes(this.webRequest,
 				ErrorAttributeOptions.defaults());
 		assertThat(attributes).containsEntry("path", "path");
+	}
+
+	@Test
+	void shouldIncludePath() {
+		this.request.setAttribute("jakarta.servlet.error.request_uri", "path");
+		Map<String, Object> attributes = this.errorAttributes.getErrorAttributes(this.webRequest,
+				ErrorAttributeOptions.of(Include.PATH));
+		assertThat(attributes).containsEntry("path", "path");
+	}
+
+	@Test
+	void shouldExcludePath() {
+		this.request.setAttribute("jakarta.servlet.error.request_uri", "path");
+		Map<String, Object> attributes = this.errorAttributes.getErrorAttributes(this.webRequest,
+				ErrorAttributeOptions.of());
+		assertThat(attributes).doesNotContainEntry("path", "path");
 	}
 
 	@Test

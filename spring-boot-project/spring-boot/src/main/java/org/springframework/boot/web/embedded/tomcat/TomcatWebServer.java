@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import javax.naming.NamingException;
@@ -31,6 +32,7 @@ import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Service;
+import org.apache.catalina.Wrapper;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.commons.logging.Log;
@@ -44,6 +46,7 @@ import org.springframework.boot.web.server.Shutdown;
 import org.springframework.boot.web.server.WebServer;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 /**
  * {@link WebServer} that can be used to control a Tomcat web server. Usually this class
@@ -119,6 +122,8 @@ public class TomcatWebServer implements WebServer {
 					}
 				});
 
+				disableBindOnInit();
+
 				// Start the server to trigger initialization listeners
 				this.tomcat.start();
 
@@ -162,12 +167,29 @@ public class TomcatWebServer implements WebServer {
 	}
 
 	private void removeServiceConnectors() {
-		for (Service service : this.tomcat.getServer().findServices()) {
-			Connector[] connectors = service.findConnectors().clone();
+		doWithConnectors((service, connectors) -> {
 			this.serviceConnectors.put(service, connectors);
 			for (Connector connector : connectors) {
 				service.removeConnector(connector);
 			}
+		});
+	}
+
+	private void disableBindOnInit() {
+		doWithConnectors((service, connectors) -> {
+			for (Connector connector : connectors) {
+				Object bindOnInit = connector.getProperty("bindOnInit");
+				if (bindOnInit == null) {
+					connector.setProperty("bindOnInit", "false");
+				}
+			}
+		});
+	}
+
+	private void doWithConnectors(BiConsumer<Service, Connector[]> consumer) {
+		for (Service service : this.tomcat.getServer().findServices()) {
+			Connector[] connectors = service.findConnectors().clone();
+			consumer.accept(service, connectors);
 		}
 	}
 
@@ -236,7 +258,9 @@ public class TomcatWebServer implements WebServer {
 	}
 
 	String getStartedLogMessage() {
-		return "Tomcat started on " + getPortsDescription(true) + " with context path '" + getContextPath() + "'";
+		String contextPath = getContextPath();
+		return "Tomcat started on " + getPortsDescription(true)
+				+ ((contextPath != null) ? " with context path '" + contextPath + "'" : "");
 	}
 
 	private void checkThatConnectorsHaveStarted() {
@@ -387,11 +411,26 @@ public class TomcatWebServer implements WebServer {
 	}
 
 	private String getContextPath() {
-		return Arrays.stream(this.tomcat.getHost().findChildren())
+		String contextPath = Arrays.stream(this.tomcat.getHost().findChildren())
 			.filter(TomcatEmbeddedContext.class::isInstance)
 			.map(TomcatEmbeddedContext.class::cast)
+			.filter(this::imperative)
 			.map(TomcatEmbeddedContext::getPath)
+			.map((path) -> path.equals("") ? "/" : path)
 			.collect(Collectors.joining(" "));
+		return StringUtils.hasText(contextPath) ? contextPath : null;
+	}
+
+	private boolean imperative(TomcatEmbeddedContext context) {
+		for (Container container : context.findChildren()) {
+			if (container instanceof Wrapper wrapper) {
+				if (wrapper.getServletClass()
+					.equals("org.springframework.http.server.reactive.TomcatHttpHandlerAdapter")) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/**

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,11 @@ package org.springframework.boot.autoconfigure.liquibase;
 
 import javax.sql.DataSource;
 
+import liquibase.UpdateSummaryEnum;
+import liquibase.UpdateSummaryOutputEnum;
 import liquibase.change.DatabaseChange;
 import liquibase.integration.spring.SpringLiquibase;
+import liquibase.ui.UIServiceEnum;
 
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
@@ -113,6 +116,16 @@ public class LiquibaseAutoConfiguration {
 			liquibase.setRollbackFile(properties.getRollbackFile());
 			liquibase.setTestRollbackOnUpdate(properties.isTestRollbackOnUpdate());
 			liquibase.setTag(properties.getTag());
+			if (properties.getShowSummary() != null) {
+				liquibase.setShowSummary(UpdateSummaryEnum.valueOf(properties.getShowSummary().name()));
+			}
+			if (properties.getShowSummaryOutput() != null) {
+				liquibase
+					.setShowSummaryOutput(UpdateSummaryOutputEnum.valueOf(properties.getShowSummaryOutput().name()));
+			}
+			if (properties.getUiService() != null) {
+				liquibase.setUiService(UIServiceEnum.valueOf(properties.getUiService().name()));
+			}
 			return liquibase;
 		}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.springframework.boot.autoconfigure.jms;
 
 import java.io.IOException;
 
+import io.micrometer.observation.ObservationRegistry;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.ExceptionListener;
 import jakarta.jms.Session;
@@ -62,6 +63,7 @@ import static org.mockito.Mockito.mock;
  * @author Aurélien Leboulanger
  * @author Eddú Meléndez
  * @author Vedran Pavic
+ * @author Lasse Wulff
  */
 class JmsAutoConfigurationTests {
 
@@ -150,7 +152,8 @@ class JmsAutoConfigurationTests {
 			.withPropertyValues("spring.jms.listener.autoStartup=false",
 					"spring.jms.listener.session.acknowledgeMode=client",
 					"spring.jms.listener.session.transacted=false", "spring.jms.listener.minConcurrency=2",
-					"spring.jms.listener.receiveTimeout=2s", "spring.jms.listener.maxConcurrency=10")
+					"spring.jms.listener.receiveTimeout=2s", "spring.jms.listener.maxConcurrency=10",
+					"spring.jms.subscription-durable=true", "spring.jms.client-id=exampleId")
 			.run(this::testJmsListenerContainerFactoryWithCustomSettings);
 	}
 
@@ -162,6 +165,8 @@ class JmsAutoConfigurationTests {
 		assertThat(container.getConcurrentConsumers()).isEqualTo(2);
 		assertThat(container.getMaxConcurrentConsumers()).isEqualTo(10);
 		assertThat(container).hasFieldOrPropertyWithValue("receiveTimeout", 2000L);
+		assertThat(container.isSubscriptionDurable()).isTrue();
+		assertThat(container.getClientId()).isEqualTo("exampleId");
 	}
 
 	@Test
@@ -259,6 +264,17 @@ class JmsAutoConfigurationTests {
 	}
 
 	@Test
+	void testDefaultContainerFactoryWithObservationRegistry() {
+		ObservationRegistry observationRegistry = mock(ObservationRegistry.class);
+		this.contextRunner.withUserConfiguration(EnableJmsConfiguration.class)
+			.withBean(ObservationRegistry.class, () -> observationRegistry)
+			.run((context) -> {
+				DefaultMessageListenerContainer container = getContainer(context, "jmsListenerContainerFactory");
+				assertThat(container.getObservationRegistry()).isSameAs(observationRegistry);
+			});
+	}
+
+	@Test
 	void testCustomContainerFactoryWithConfigurer() {
 		this.contextRunner.withUserConfiguration(TestConfiguration9.class, EnableJmsConfiguration.class)
 			.withPropertyValues("spring.jms.listener.autoStartup=false")
@@ -288,6 +304,17 @@ class JmsAutoConfigurationTests {
 		this.contextRunner.withUserConfiguration(DestinationResolversConfiguration.class)
 			.run((context) -> assertThat(context.getBean(JmsTemplate.class).getDestinationResolver())
 				.isSameAs(context.getBean("myDestinationResolver")));
+	}
+
+	@Test
+	void testJmsTemplateWithObservationRegistry() {
+		ObservationRegistry observationRegistry = mock(ObservationRegistry.class);
+		this.contextRunner.withUserConfiguration(EnableJmsConfiguration.class)
+			.withBean(ObservationRegistry.class, () -> observationRegistry)
+			.run((context) -> {
+				JmsTemplate jmsTemplate = context.getBean(JmsTemplate.class);
+				assertThat(jmsTemplate).extracting("observationRegistry").isSameAs(observationRegistry);
+			});
 	}
 
 	@Test

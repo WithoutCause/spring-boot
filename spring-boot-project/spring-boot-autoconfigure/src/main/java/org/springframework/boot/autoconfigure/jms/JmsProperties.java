@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import org.springframework.boot.context.properties.DeprecatedConfigurationProper
  * @author Greg Turnquist
  * @author Phillip Webb
  * @author Stephane Nicoll
+ * @author Lasse Wulff
  * @author Vedran Pavic
  * @since 1.0.0
  */
@@ -44,6 +45,16 @@ public class JmsProperties {
 	 */
 	private String jndiName;
 
+	/**
+	 * Whether the subscription is durable.
+	 */
+	private boolean subscriptionDurable = false;
+
+	/**
+	 * Client id of the connection.
+	 */
+	private String clientId;
+
 	private final Cache cache = new Cache();
 
 	private final Listener listener = new Listener();
@@ -56,6 +67,22 @@ public class JmsProperties {
 
 	public void setPubSubDomain(boolean pubSubDomain) {
 		this.pubSubDomain = pubSubDomain;
+	}
+
+	public boolean isSubscriptionDurable() {
+		return this.subscriptionDurable;
+	}
+
+	public void setSubscriptionDurable(boolean subscriptionDurable) {
+		this.subscriptionDurable = subscriptionDurable;
+	}
+
+	public String getClientId() {
+		return this.clientId;
+	}
+
+	public void setClientId(String clientId) {
+		this.clientId = clientId;
 	}
 
 	public String getJndiName() {

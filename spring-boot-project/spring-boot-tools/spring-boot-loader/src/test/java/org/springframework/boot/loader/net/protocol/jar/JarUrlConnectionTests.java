@@ -502,8 +502,28 @@ class JarUrlConnectionTests {
 	void getLastModifiedHeaderReturnsFileModifiedTime() throws IOException {
 		JarUrlConnection connection = JarUrlConnection.open(this.url);
 		URLConnection fileConnection = this.file.toURI().toURL().openConnection();
-		assertThat(connection.getHeaderFieldDate("last-modified", 0)).isEqualTo(withoutNanos(this.file.lastModified()))
-			.isEqualTo(fileConnection.getHeaderFieldDate("last-modified", 0));
+		try {
+			assertThat(connection.getHeaderFieldDate("last-modified", 0))
+				.isEqualTo(withoutNanos(this.file.lastModified()))
+				.isEqualTo(fileConnection.getHeaderFieldDate("last-modified", 0));
+		}
+		finally {
+			fileConnection.getInputStream().close();
+		}
+	}
+
+	@Test
+	void getJarFileWhenInFolderWithEncodedCharsReturnsJarFile() throws Exception {
+		this.temp = new File(this.temp, "te#st");
+		this.temp.mkdirs();
+		this.file = new File(this.temp, "test.jar");
+		this.url = JarUrl.create(this.file, "nested.jar");
+		assertThat(this.url.toString()).contains("te%23st");
+		TestJar.create(this.file);
+		JarUrlConnection connection = JarUrlConnection.open(this.url);
+		JarFile jarFile = connection.getJarFile();
+		assertThat(jarFile).isNotNull();
+		assertThat(jarFile.getEntry("3.dat")).isNotNull();
 	}
 
 	private long withoutNanos(long epochMilli) {

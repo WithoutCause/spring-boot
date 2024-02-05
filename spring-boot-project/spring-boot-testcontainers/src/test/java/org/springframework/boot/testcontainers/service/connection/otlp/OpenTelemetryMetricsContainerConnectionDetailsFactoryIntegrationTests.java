@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ class OpenTelemetryMetricsContainerConnectionDetailsFactoryIntegrationTests {
 			.untilAsserted(() -> whenPrometheusScraped().then()
 				.statusCode(200)
 				.contentType(OPENMETRICS_001)
-				.body(endsWith("# EOF\n")));
+				.body(endsWith("# EOF\n"), containsString("service_name")));
 		whenPrometheusScraped().then()
 			.body(containsString(
 					"{job=\"test\",service_name=\"test\",telemetry_sdk_language=\"java\",telemetry_sdk_name=\"io.micrometer\""),

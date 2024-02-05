@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,6 +116,7 @@ import org.springframework.util.StringUtils;
  * @author Venil Noronha
  * @author Henri Kerola
  * @author Moritz Halbritter
+ * @author Onur Kagan Ozcan
  * @since 2.0.0
  * @see #setPort(int)
  * @see #setConfigurations(Collection)
@@ -183,7 +184,7 @@ public class JettyServletWebServerFactory extends AbstractServletWebServerFactor
 		server.setHandler(addHandlerWrappers(context));
 		this.logger.info("Server initialized with port: " + port);
 		if (this.maxConnections > -1) {
-			server.addBean(new ConnectionLimit(this.maxConnections, server));
+			server.addBean(new ConnectionLimit(this.maxConnections, server.getConnectors()));
 		}
 		if (Ssl.isEnabled(getSsl())) {
 			customizeSsl(server, address);
@@ -216,7 +217,6 @@ public class JettyServletWebServerFactory extends AbstractServletWebServerFactor
 	private AbstractConnector createConnector(InetSocketAddress address, Server server) {
 		HttpConfiguration httpConfiguration = new HttpConfiguration();
 		httpConfiguration.setSendServerVersion(false);
-		httpConfiguration.setIdleTimeout(30000);
 		List<ConnectionFactory> connectionFactories = new ArrayList<>();
 		connectionFactories.add(new HttpConnectionFactory(httpConfiguration));
 		if (getHttp2() != null && getHttp2().isEnabled()) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -277,12 +277,12 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	private void addArgs(List<String> args) {
 		RunArguments applicationArguments = resolveApplicationArguments();
 		Collections.addAll(args, applicationArguments.asArray());
-		logArguments("Application argument(s): ", applicationArguments.asArray());
+		logArguments("Application argument", applicationArguments.asArray());
 	}
 
 	private Map<String, String> determineEnvironmentVariables() {
 		EnvVariables envVariables = resolveEnvVariables();
-		logArguments("Environment variable(s): ", envVariables.asArray());
+		logArguments("Environment variable", envVariables.asArray());
 		return envVariables.asMap();
 	}
 
@@ -307,7 +307,7 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 	private void addJvmArgs(List<String> args) {
 		RunArguments jvmArguments = resolveJvmArguments();
 		Collections.addAll(args, jvmArguments.asArray());
-		logArguments("JVM argument(s): ", jvmArguments.asArray());
+		logArguments("JVM argument", jvmArguments.asArray());
 	}
 
 	private void addAgents(List<String> args) {
@@ -334,7 +334,7 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 				}
 			}
 			arguments.getArgs().addFirst(arg.toString());
-			logArguments("Active profile(s): ", this.profiles);
+			logArguments("Active profile", this.profiles);
 		}
 	}
 
@@ -342,7 +342,7 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 		try {
 			StringBuilder classpath = new StringBuilder();
 			for (URL ele : getClassPathUrls()) {
-				if (classpath.length() > 0) {
+				if (!classpath.isEmpty()) {
 					classpath.append(File.pathSeparator);
 				}
 				classpath.append(new File(ele.toURI()));
@@ -413,8 +413,9 @@ public abstract class AbstractRunMojo extends AbstractDependencyFilterMojo {
 		}
 	}
 
-	private void logArguments(String message, String[] args) {
+	private void logArguments(String name, String[] args) {
 		if (getLog().isDebugEnabled()) {
+			String message = (args.length == 1) ? name + ": " : name + "s: ";
 			getLog().debug(Arrays.stream(args).collect(Collectors.joining(" ", message, "")));
 		}
 	}

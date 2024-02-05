@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import org.springframework.boot.loader.testsupport.TestJar;
 import org.springframework.boot.loader.zip.ZipContent.Entry;
+import org.springframework.boot.loader.zip.ZipContent.Kind;
 import org.springframework.util.FileCopyUtils;
 import org.springframework.util.StreamUtils;
 
@@ -168,6 +169,25 @@ class ZipContentTests {
 		}
 	}
 
+	@Test
+	void getKindWhenZipReturnsZip() {
+		assertThat(this.zipContent.getKind()).isEqualTo(Kind.ZIP);
+	}
+
+	@Test
+	void getKindWhenNestedZipReturnsNestedZip() throws IOException {
+		try (ZipContent nested = ZipContent.open(this.file.toPath(), "nested.jar")) {
+			assertThat(nested.getKind()).isEqualTo(Kind.NESTED_ZIP);
+		}
+	}
+
+	@Test
+	void getKindWhenNestedDirectoryReturnsNestedDirectory() throws IOException {
+		try (ZipContent nested = ZipContent.open(this.file.toPath(), "d/")) {
+			assertThat(nested.getKind()).isEqualTo(Kind.NESTED_DIRECTORY);
+		}
+	}
+
 	private void assertThatFieldsAreEqual(ZipEntry actual, ZipEntry expected) {
 		assertThat(actual.getName()).isEqualTo(expected.getName());
 		assertThat(actual.getTime()).isEqualTo(expected.getTime());
@@ -210,11 +230,9 @@ class ZipContentTests {
 	@Test
 	void nestedDirectoryReturnsNestedJar() throws IOException {
 		try (ZipContent nested = ZipContent.open(this.file.toPath(), "d/")) {
-			assertThat(nested.size()).isEqualTo(3);
+			assertThat(nested.size()).isEqualTo(1);
 			assertThat(nested.getEntry("9.dat")).isNotNull();
-			assertThat(nested.getEntry(0).getName()).isEqualTo("META-INF/");
-			assertThat(nested.getEntry(1).getName()).isEqualTo("META-INF/MANIFEST.MF");
-			assertThat(nested.getEntry(2).getName()).isEqualTo("9.dat");
+			assertThat(nested.getEntry(0).getName()).isEqualTo("9.dat");
 		}
 	}
 
@@ -230,9 +248,8 @@ class ZipContentTests {
 			File file = new File(this.tempDir, "included.zip");
 			write(file, nested.openRawZipData());
 			try (ZipFile loadedZipFile = new ZipFile(file)) {
-				assertThat(loadedZipFile.size()).isEqualTo(3);
-				assertThat(loadedZipFile.stream().map(ZipEntry::getName)).containsExactly("META-INF/",
-						"META-INF/MANIFEST.MF", "9.dat");
+				assertThat(loadedZipFile.size()).isEqualTo(1);
+				assertThat(loadedZipFile.stream().map(ZipEntry::getName)).containsExactly("9.dat");
 				assertThat(loadedZipFile.getEntry("9.dat")).isNotNull();
 				try (InputStream in = loadedZipFile.getInputStream(loadedZipFile.getEntry("9.dat"))) {
 					ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -283,7 +300,7 @@ class ZipContentTests {
 
 	@Test
 	void openWhenZip64ThatExceedsZipSizeLimitOpensZip() throws Exception {
-		Assumptions.assumeTrue(this.tempDir.getFreeSpace() > 6 * 1024 * 1024 * 1024, "Insufficient disk space");
+		Assumptions.assumeTrue(this.tempDir.getFreeSpace() > 6L * 1024 * 1024 * 1024, "Insufficient disk space");
 		File zip64File = new File(this.tempDir, "zip64.zip");
 		File entryFile = new File(this.tempDir, "entry.dat");
 		CRC32 crc32 = new CRC32();

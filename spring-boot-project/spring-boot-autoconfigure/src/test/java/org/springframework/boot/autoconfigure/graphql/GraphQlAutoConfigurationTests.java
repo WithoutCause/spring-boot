@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLOutputType;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.RuntimeWiring;
+import graphql.schema.idl.TypeDefinitionRegistry;
 import graphql.schema.visibility.DefaultGraphqlFieldVisibility;
 import graphql.schema.visibility.NoIntrospectionGraphqlFieldVisibility;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -52,6 +53,7 @@ import org.springframework.graphql.execution.DataFetcherExceptionResolver;
 import org.springframework.graphql.execution.DataLoaderRegistrar;
 import org.springframework.graphql.execution.GraphQlSource;
 import org.springframework.graphql.execution.RuntimeWiringConfigurer;
+import org.springframework.graphql.execution.TypeDefinitionConfigurer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -126,7 +128,9 @@ class GraphQlAutoConfigurationTests {
 			assertThat(graphQL.getQueryStrategy()).extracting("dataFetcherExceptionHandler")
 				.satisfies((exceptionHandler) -> {
 					assertThat(exceptionHandler.getClass().getName()).endsWith("ExceptionResolversExceptionHandler");
-					assertThat(exceptionHandler).extracting("resolvers").asList().hasSize(2);
+					assertThat(exceptionHandler).extracting("resolvers")
+						.asInstanceOf(InstanceOfAssertFactories.LIST)
+						.hasSize(2);
 				});
 		});
 	}
@@ -217,6 +221,14 @@ class GraphQlAutoConfigurationTests {
 			assertThat(bookConnection).isInstanceOf(GraphQLObjectType.class);
 			assertThat((GraphQLObjectType) bookConnection)
 				.satisfies((connection) -> assertThat(connection.getFieldDefinition("edges")).isNotNull());
+		});
+	}
+
+	@Test
+	void shouldUseCustomTypeDefinitionConfigurerWhenDefined() {
+		this.contextRunner.withUserConfiguration(CustomTypeDefinitionConfigurer.class).run((context) -> {
+			TestTypeDefinitionConfigurer configurer = context.getBean(TestTypeDefinitionConfigurer.class);
+			assertThat(configurer.applied).isTrue();
 		});
 	}
 
@@ -331,6 +343,27 @@ class GraphQlAutoConfigurationTests {
 		@Bean
 		Executor customExecutor() {
 			return mock(Executor.class);
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class CustomTypeDefinitionConfigurer {
+
+		@Bean
+		TestTypeDefinitionConfigurer testTypeDefinitionConfigurer() {
+			return new TestTypeDefinitionConfigurer();
+		}
+
+	}
+
+	static class TestTypeDefinitionConfigurer implements TypeDefinitionConfigurer {
+
+		boolean applied = false;
+
+		@Override
+		public void configure(TypeDefinitionRegistry registry) {
+			this.applied = true;
 		}
 
 	}

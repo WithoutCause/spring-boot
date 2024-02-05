@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ class CouchbaseAutoConfigurationTests {
 					.doesNotHaveBean(PropertiesCouchbaseConnectionDetails.class);
 				Cluster cluster = context.getBean(Cluster.class);
 				assertThat(cluster.core()).extracting("connectionString.hosts")
-					.asList()
+					.asInstanceOf(InstanceOfAssertFactories.LIST)
 					.extractingResultOf("host")
 					.containsExactly("couchbase.example.com");
 			});
@@ -109,7 +109,7 @@ class CouchbaseAutoConfigurationTests {
 				assertThat(context).hasSingleBean(ClusterEnvironment.class).hasSingleBean(Cluster.class);
 				Cluster cluster = context.getBean(Cluster.class);
 				assertThat(cluster.core()).extracting("connectionString.hosts")
-					.asList()
+					.asInstanceOf(InstanceOfAssertFactories.LIST)
 					.extractingResultOf("host")
 					.containsExactly("couchbase.example.com");
 			});
@@ -190,15 +190,6 @@ class CouchbaseAutoConfigurationTests {
 	}
 
 	@Test
-	void enableSslWithKeyStore() {
-		testClusterEnvironment((env) -> {
-			SecurityConfig securityConfig = env.securityConfig();
-			assertThat(securityConfig.tlsEnabled()).isTrue();
-			assertThat(securityConfig.trustManagerFactory()).isNotNull();
-		}, "spring.couchbase.env.ssl.keyStore=classpath:test.jks", "spring.couchbase.env.ssl.keyStorePassword=secret");
-	}
-
-	@Test
 	void enableSslWithBundle() {
 		testClusterEnvironment((env) -> {
 			SecurityConfig securityConfig = env.securityConfig();
@@ -220,16 +211,6 @@ class CouchbaseAutoConfigurationTests {
 					.isInstanceOf(NoSuchSslBundleException.class)
 					.hasMessageContaining("test-bundle");
 			});
-	}
-
-	@Test
-	void disableSslEvenWithKeyStore() {
-		testClusterEnvironment((env) -> {
-			SecurityConfig securityConfig = env.securityConfig();
-			assertThat(securityConfig.tlsEnabled()).isFalse();
-			assertThat(securityConfig.trustManagerFactory()).isNull();
-		}, "spring.couchbase.env.ssl.enabled=false", "spring.couchbase.env.ssl.keyStore=classpath:test.jks",
-				"spring.couchbase.env.ssl.keyStorePassword=secret");
 	}
 
 	@Test

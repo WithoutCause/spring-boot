@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import org.springframework.util.ReflectionUtils;
  * Handles Jetty graceful shutdown.
  *
  * @author Andy Wilkinson
+ * @author Onur Kagan Ozcan
  */
 final class GracefulShutdown {
 
@@ -99,7 +100,6 @@ final class GracefulShutdown {
 		while (this.shuttingDown && this.activeRequests.get() > 0) {
 			sleep(100);
 		}
-		System.out.println(this.activeRequests.get());
 		this.shuttingDown = false;
 		long activeRequests = this.activeRequests.get();
 		if (activeRequests == 0) {
@@ -107,7 +107,8 @@ final class GracefulShutdown {
 			callback.shutdownComplete(GracefulShutdownResult.IDLE);
 		}
 		else {
-			logger.info(LogMessage.format("Graceful shutdown aborted with %d request(s) still active", activeRequests));
+			logger.info(LogMessage.format("Graceful shutdown aborted with %d request%s still active", activeRequests,
+					(activeRequests == 1) ? "" : "s"));
 			callback.shutdownComplete(GracefulShutdownResult.REQUESTS_ACTIVE);
 		}
 	}

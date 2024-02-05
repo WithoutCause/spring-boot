@@ -30,14 +30,7 @@ bom {
 	library("C3P0", "0.9.5.5") {
 		group("com.mchange") {
 			modules = [
-					"c3p0"
-			]
-		}
-	}
-	library("Commons Compress", "1.23.0") {
-		group("org.apache.commons") {
-			modules = [
-				"commons-compress"
+				"c3p0"
 			]
 		}
 	}
@@ -45,13 +38,6 @@ bom {
 		group("commons-fileupload") {
 			modules = [
 				"commons-fileupload"
-			]
-		}
-	}
-	library("Crac", "1.4.0") {
-		group("org.crac") {
-			modules = [
-				"crac"
 			]
 		}
 	}
@@ -148,7 +134,7 @@ bom {
 	library("Micrometer Context Propagation", "1.0.5") {
 		group("io.micrometer") {
 			modules = [
-					"context-propagation"
+				"context-propagation"
 			]
 		}
 	}

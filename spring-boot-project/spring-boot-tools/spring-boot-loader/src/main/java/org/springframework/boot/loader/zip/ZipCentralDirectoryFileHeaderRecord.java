@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,22 +83,22 @@ record ZipCentralDirectoryFileHeaderRecord(short versionMadeBy, short versionNee
 	 * @throws IOException on I/O error
 	 */
 	void copyTo(DataBlock dataBlock, long pos, ZipEntry zipEntry) throws IOException {
-		int fileNameLength = fileNameLength() & 0xFFFF;
-		int extraLength = extraFieldLength() & 0xFFFF;
-		int commentLength = fileCommentLength() & 0xFFFF;
-		zipEntry.setMethod(compressionMethod() & 0xFFFF);
+		int fileNameLength = Short.toUnsignedInt(fileNameLength());
+		int extraLength = Short.toUnsignedInt(extraFieldLength());
+		int commentLength = Short.toUnsignedInt(fileCommentLength());
+		zipEntry.setMethod(Short.toUnsignedInt(compressionMethod()));
 		zipEntry.setTime(decodeMsDosFormatDateTime(lastModFileDate(), lastModFileTime()));
-		zipEntry.setCrc(crc32() & 0xFFFFFFFFL);
-		zipEntry.setCompressedSize(compressedSize() & 0xFFFFFFFFL);
-		zipEntry.setSize(uncompressedSize() & 0xFFFFFFFFL);
+		zipEntry.setCrc(Integer.toUnsignedLong(crc32()));
+		zipEntry.setCompressedSize(Integer.toUnsignedLong(compressedSize()));
+		zipEntry.setSize(Integer.toUnsignedLong(uncompressedSize()));
 		if (extraLength > 0) {
 			long extraPos = pos + MINIMUM_SIZE + fileNameLength;
 			ByteBuffer buffer = ByteBuffer.allocate(extraLength);
 			dataBlock.readFully(buffer, extraPos);
 			zipEntry.setExtra(buffer.array());
 		}
-		if ((fileCommentLength() & 0xFFFF) > 0) {
-			long commentPos = MINIMUM_SIZE + fileNameLength + extraLength;
+		if (commentLength > 0) {
+			long commentPos = pos + MINIMUM_SIZE + fileNameLength + extraLength;
 			zipEntry.setComment(ZipString.readString(dataBlock, commentPos, commentLength));
 		}
 	}

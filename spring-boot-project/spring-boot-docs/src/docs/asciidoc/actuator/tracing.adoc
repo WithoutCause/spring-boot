@@ -70,7 +70,7 @@ Press the "Show" button to see the details of that trace.
 [[actuator.micrometer-tracing.logging]]
 === Logging Correlation IDs
 Correlation IDs provide a helpful way to link lines in your log files to spans/traces.
-By default, as long as configprop:management.tracing.enabled[] has not been set to `false`, Spring Boot will include correlation IDs in your logs whenever you are using Micrometer Tracing.
+If you are using Micrometer Tracing, Spring Boot will include correlation IDs in your logs by default.
 
 The default correlation ID is built from `traceId` and `spanId` https://logback.qos.ch/manual/mdc.html[MDC] values.
 For example, if Micrometer Tracing has added an MDC `traceId` of `803B448A0489F84084905D3093480352` and an MDC `spanId` of `3425F23BB2432450` the log output will include the correlation ID `[803B448A0489F84084905D3093480352-3425F23BB2432450]`.
@@ -196,3 +196,11 @@ For the example above, setting this property to `baggage1` results in an HTTP he
 
 If you want to propagate the baggage to the MDC, use the configprop:management.tracing.baggage.correlation.fields[] configuration property.
 For the example above, setting this property to `baggage1` results in an MDC entry named `baggage1`.
+
+
+
+[[actuator.micrometer-tracing.tests]]
+=== Tests
+
+Tracing components which are reporting data are not auto-configured when using `@SpringBootTest`.
+See <<features#features.testing.spring-boot-applications.tracing, the testing section>> for more details.

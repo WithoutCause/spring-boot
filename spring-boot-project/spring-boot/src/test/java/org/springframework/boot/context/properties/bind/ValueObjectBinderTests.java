@@ -26,11 +26,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.internal.CharacterIndex;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySource;
 import org.springframework.boot.context.properties.source.MockConfigurationPropertySource;
+import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.ResolvableType;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.test.tools.SourceFile;
@@ -389,6 +392,36 @@ class ValueObjectBinderTests {
 				fail("Expected generated class 'RecordProperties' not found", ex);
 			}
 		});
+	}
+
+	@Test // gh-38201
+	void bindWhenNonExtractableParameterNamesOnPropertyAndNonIterablePropertySource() throws Exception {
+		verifyJsonPathParametersCannotBeResolved();
+		MockConfigurationPropertySource source = new MockConfigurationPropertySource();
+		source.put("test.value", "test");
+		this.sources.add(source.nonIterable());
+		Bindable<NonExtractableParameterName> target = Bindable.of(NonExtractableParameterName.class);
+		NonExtractableParameterName bound = this.binder.bindOrCreate("test", target);
+		assertThat(bound.getValue()).isEqualTo("test");
+	}
+
+	@Test
+	void createWhenNonExtractableParameterNamesOnPropertyAndNonIterablePropertySource() throws Exception {
+		assertThat(new DefaultParameterNameDiscoverer()
+			.getParameterNames(CharacterIndex.class.getDeclaredConstructor(CharSequence.class))).isNull();
+		MockConfigurationPropertySource source = new MockConfigurationPropertySource();
+		this.sources.add(source.nonIterable());
+		Bindable<CharacterIndex> target = Bindable.of(CharacterIndex.class).withBindMethod(BindMethod.VALUE_OBJECT);
+		assertThatExceptionOfType(BindException.class).isThrownBy(() -> this.binder.bindOrCreate("test", target))
+			.withStackTraceContaining("Ensure that the compiler uses the '-parameters' flag");
+	}
+
+	private void verifyJsonPathParametersCannotBeResolved() throws NoSuchFieldException {
+		Class<?> jsonPathClass = NonExtractableParameterName.class.getDeclaredField("jsonPath").getType();
+		Constructor<?>[] constructors = jsonPathClass.getDeclaredConstructors();
+		assertThat(constructors).hasSize(1);
+		constructors[0].setAccessible(true);
+		assertThat(new DefaultParameterNameDiscoverer().getParameterNames(constructors[0])).isNull();
 	}
 
 	private void noConfigurationProperty(BindException ex) {
@@ -841,6 +874,30 @@ class ValueObjectBinderTests {
 
 		String getImportName() {
 			return this.importName;
+		}
+
+	}
+
+	static class NonExtractableParameterName {
+
+		private String value;
+
+		private JsonPath jsonPath;
+
+		String getValue() {
+			return this.value;
+		}
+
+		void setValue(String value) {
+			this.value = value;
+		}
+
+		JsonPath getJsonPath() {
+			return this.jsonPath;
+		}
+
+		void setJsonPath(JsonPath jsonPath) {
+			this.jsonPath = jsonPath;
 		}
 
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.ReaderBuilder;
 import org.apache.pulsar.client.api.interceptor.ProducerInterceptor;
 import org.apache.pulsar.common.schema.SchemaType;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledForJreRange;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.condition.JRE;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -287,7 +289,7 @@ class PulsarAutoConfigurationTests {
 			this.contextRunner.withBean("customProducerInterceptor", ProducerInterceptor.class, () -> interceptor)
 				.run((context) -> assertThat(context).getBean(PulsarTemplate.class)
 					.extracting("interceptors")
-					.asList()
+					.asInstanceOf(InstanceOfAssertFactories.LIST)
 					.contains(interceptor));
 		}
 
@@ -296,14 +298,14 @@ class PulsarAutoConfigurationTests {
 			this.contextRunner.withUserConfiguration(InterceptorTestConfiguration.class)
 				.run((context) -> assertThat(context).getBean(PulsarTemplate.class)
 					.extracting("interceptors")
-					.asList()
+					.asInstanceOf(InstanceOfAssertFactories.LIST)
 					.containsExactly(context.getBean("interceptorBar"), context.getBean("interceptorFoo")));
 		}
 
 		@Test
 		void whenNoPropertiesEnablesObservation() {
 			this.contextRunner.run((context) -> assertThat(context).getBean(PulsarTemplate.class)
-				.hasFieldOrPropertyWithValue("observationEnabled", true));
+				.hasFieldOrPropertyWithValue("observationEnabled", false));
 		}
 
 		@Test
@@ -373,6 +375,15 @@ class PulsarAutoConfigurationTests {
 				});
 		}
 
+		@Test
+		void injectsExpectedBeanWithExplicitGenericType() {
+			this.contextRunner.withBean(ExplicitGenericTypeConfig.class)
+				.run((context) -> assertThat(context).getBean(ExplicitGenericTypeConfig.class)
+					.hasFieldOrPropertyWithValue("consumerFactory", context.getBean(PulsarConsumerFactory.class))
+					.hasFieldOrPropertyWithValue("containerFactory",
+							context.getBean(ConcurrentPulsarListenerContainerFactory.class)));
+		}
+
 		@TestConfiguration(proxyBeanMethods = false)
 		static class ConsumerBuilderCustomizersConfig {
 
@@ -386,6 +397,20 @@ class PulsarAutoConfigurationTests {
 			@Order(100)
 			ConsumerBuilderCustomizer<?> customizerBar() {
 				return (builder) -> builder.consumerName("fromCustomizer1");
+			}
+
+		}
+
+		static class ExplicitGenericTypeConfig {
+
+			@Autowired
+			PulsarConsumerFactory<TestType> consumerFactory;
+
+			@Autowired
+			ConcurrentPulsarListenerContainerFactory<TestType> containerFactory;
+
+			static class TestType {
+
 			}
 
 		}
@@ -450,7 +475,7 @@ class PulsarAutoConfigurationTests {
 		void whenNoPropertiesEnablesObservation() {
 			this.contextRunner
 				.run((context) -> assertThat(context).getBean(ConcurrentPulsarListenerContainerFactory.class)
-					.hasFieldOrPropertyWithValue("containerProperties.observationEnabled", true));
+					.hasFieldOrPropertyWithValue("containerProperties.observationEnabled", false));
 		}
 
 		@Test

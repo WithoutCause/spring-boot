@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,6 +61,7 @@ import org.springframework.web.servlet.ModelAndView;
  * @author Stephane Nicoll
  * @author Vedran Pavic
  * @author Scott Frederick
+ * @author Moritz Halbritter
  * @since 2.0.0
  * @see ErrorAttributes
  */
@@ -99,6 +100,9 @@ public class DefaultErrorAttributes implements ErrorAttributes, HandlerException
 		}
 		if (!options.isIncluded(Include.BINDING_ERRORS)) {
 			errorAttributes.remove("errors");
+		}
+		if (!options.isIncluded(Include.PATH)) {
+			errorAttributes.remove("path");
 		}
 		return errorAttributes;
 	}
@@ -216,9 +220,6 @@ public class DefaultErrorAttributes implements ErrorAttributes, HandlerException
 		if (exception == null) {
 			exception = getAttribute(webRequest, RequestDispatcher.ERROR_EXCEPTION);
 		}
-		// store the exception in a well-known attribute to make it available to metrics
-		// instrumentation.
-		webRequest.setAttribute(ErrorAttributes.ERROR_ATTRIBUTE, exception, WebRequest.SCOPE_REQUEST);
 		return exception;
 	}
 

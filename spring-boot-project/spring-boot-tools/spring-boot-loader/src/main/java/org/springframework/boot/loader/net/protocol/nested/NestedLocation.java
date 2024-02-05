@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.boot.loader.net.util.UrlDecoder;
 
 /**
- * A location obtained from a {@code nested:} {@link URL} consisting of a jar file and a
- * nested entry.
+ * A location obtained from a {@code nested:} {@link URL} consisting of a jar file and an
+ * optional nested entry.
  * <p>
  * The syntax of a nested JAR URL is: <pre>
  * nestedjar:&lt;path&gt;/!{entry}
@@ -48,19 +48,19 @@ import org.springframework.boot.loader.net.util.UrlDecoder;
  * @param path the path to the zip that contains the nested entry
  * @param nestedEntryName the nested entry name
  * @author Phillip Webb
+ * @author Andy Wilkinson
  * @since 3.2.0
  */
 public record NestedLocation(Path path, String nestedEntryName) {
 
 	private static final Map<String, NestedLocation> cache = new ConcurrentHashMap<>();
 
-	public NestedLocation {
+	public NestedLocation(Path path, String nestedEntryName) {
 		if (path == null) {
 			throw new IllegalArgumentException("'path' must not be null");
 		}
-		if (nestedEntryName == null || nestedEntryName.trim().isEmpty()) {
-			throw new IllegalArgumentException("'nestedEntryName' must not be empty");
-		}
+		this.path = path;
+		this.nestedEntryName = (nestedEntryName != null && !nestedEntryName.isEmpty()) ? nestedEntryName : null;
 	}
 
 	/**
@@ -73,7 +73,7 @@ public record NestedLocation(Path path, String nestedEntryName) {
 		if (url == null || !"nested".equalsIgnoreCase(url.getProtocol())) {
 			throw new IllegalArgumentException("'url' must not be null and must use 'nested' protocol");
 		}
-		return parse(UrlDecoder.decode(url.getPath()));
+		return parse(UrlDecoder.decode(url.toString().substring(7)));
 	}
 
 	/**
@@ -94,25 +94,26 @@ public record NestedLocation(Path path, String nestedEntryName) {
 			throw new IllegalArgumentException("'path' must not be empty");
 		}
 		int index = path.lastIndexOf("/!");
-		if (index == -1) {
-			throw new IllegalArgumentException("'path' must contain '/!'");
-		}
 		return cache.computeIfAbsent(path, (l) -> create(index, l));
 	}
 
 	private static NestedLocation create(int index, String location) {
-		String locationPath = location.substring(0, index);
-		if (isWindows()) {
+		String locationPath = (index != -1) ? location.substring(0, index) : location;
+		if (isWindows() && !isUncPath(location)) {
 			while (locationPath.startsWith("/")) {
 				locationPath = locationPath.substring(1, locationPath.length());
 			}
 		}
-		String nestedEntryName = location.substring(index + 2);
+		String nestedEntryName = (index != -1) ? location.substring(index + 2) : null;
 		return new NestedLocation((!locationPath.isEmpty()) ? Path.of(locationPath) : null, nestedEntryName);
 	}
 
 	private static boolean isWindows() {
 		return File.separatorChar == '\\';
+	}
+
+	private static boolean isUncPath(String input) {
+		return !input.contains(":");
 	}
 
 	static void clearCache() {

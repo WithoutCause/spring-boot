@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.jasper.servlet.JspServlet;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.awaitility.Awaitility;
 import org.eclipse.jetty.ee10.servlet.ErrorPageErrorHandler;
 import org.eclipse.jetty.ee10.servlet.ServletHolder;
@@ -46,6 +47,7 @@ import org.eclipse.jetty.ee10.webapp.AbstractConfiguration;
 import org.eclipse.jetty.ee10.webapp.ClassMatcher;
 import org.eclipse.jetty.ee10.webapp.Configuration;
 import org.eclipse.jetty.ee10.webapp.WebAppContext;
+import org.eclipse.jetty.server.AbstractConnector;
 import org.eclipse.jetty.server.ConnectionLimit;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Handler;
@@ -85,6 +87,7 @@ import static org.mockito.Mockito.mock;
  * @author Andy Wilkinson
  * @author Henri Kerola
  * @author Moritz Halbritter
+ * @author Onur Kagan Ozcan
  */
 class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryTests {
 
@@ -541,6 +544,19 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 		assertThat(connectionLimit.getMaxConnections()).isOne();
 	}
 
+	@Test
+	void shouldApplyingMaxConnectionUseConnector() throws Exception {
+		JettyServletWebServerFactory factory = getFactory();
+		factory.setMaxConnections(1);
+		this.webServer = factory.getWebServer();
+		Server server = ((JettyWebServer) this.webServer).getServer();
+		assertThat(server.getConnectors()).isEmpty();
+		ConnectionLimit connectionLimit = server.getBean(ConnectionLimit.class);
+		assertThat(connectionLimit).extracting("_connectors")
+			.asInstanceOf(InstanceOfAssertFactories.list(AbstractConnector.class))
+			.hasSize(1);
+	}
+
 	@Override
 	protected String startedLogMessage() {
 		return ((JettyWebServer) this.webServer).getStartedLogMessage();
@@ -560,7 +576,7 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 		throw new IllegalStateException("No WebAppContext found");
 	}
 
-	private static class CustomErrorHandler extends ErrorPageErrorHandler {
+	private static final class CustomErrorHandler extends ErrorPageErrorHandler {
 
 	}
 

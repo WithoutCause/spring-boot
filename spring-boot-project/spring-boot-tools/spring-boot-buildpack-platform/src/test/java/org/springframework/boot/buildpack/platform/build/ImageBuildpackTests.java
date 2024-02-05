@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -189,6 +190,7 @@ class ImageBuildpackTests extends AbstractJsonTests {
 				tarOut.finish();
 			}
 			consumer.accept("test", tarFile.toPath());
+			Files.delete(tarFile.toPath());
 		}
 		catch (IOException ex) {
 			fail("Error writing mock layers", ex);
@@ -213,10 +215,10 @@ class ImageBuildpackTests extends AbstractJsonTests {
 		byte[] content = layers.get(0).toByteArray();
 		List<TarArchiveEntry> entries = new ArrayList<>();
 		try (TarArchiveInputStream tar = new TarArchiveInputStream(new ByteArrayInputStream(content))) {
-			TarArchiveEntry entry = tar.getNextTarEntry();
+			TarArchiveEntry entry = tar.getNextEntry();
 			while (entry != null) {
 				entries.add(entry);
-				entry = tar.getNextTarEntry();
+				entry = tar.getNextEntry();
 			}
 		}
 		assertThat(entries).extracting("name", "mode")

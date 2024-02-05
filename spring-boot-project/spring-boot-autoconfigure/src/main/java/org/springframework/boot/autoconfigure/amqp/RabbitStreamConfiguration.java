@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import com.rabbitmq.stream.EnvironmentBuilder;
 import org.springframework.amqp.rabbit.config.ContainerCustomizer;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.amqp.RabbitProperties.StreamContainer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -57,7 +58,9 @@ class RabbitStreamConfiguration {
 			ObjectProvider<ContainerCustomizer<StreamListenerContainer>> containerCustomizer) {
 		StreamRabbitListenerContainerFactory factory = new StreamRabbitListenerContainerFactory(
 				rabbitStreamEnvironment);
-		factory.setNativeListener(properties.getListener().getStream().isNativeListener());
+		StreamContainer stream = properties.getListener().getStream();
+		factory.setObservationEnabled(stream.isObservationEnabled());
+		factory.setNativeListener(stream.isNativeListener());
 		consumerCustomizer.ifUnique(factory::setConsumerCustomizer);
 		containerCustomizer.ifUnique(factory::setContainerCustomizer);
 		return factory;
