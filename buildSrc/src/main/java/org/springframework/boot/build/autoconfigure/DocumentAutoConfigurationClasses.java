@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Reader;
+import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.SortedSet;
@@ -30,6 +32,7 @@ import java.util.stream.Collectors;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Task;
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.OutputDirectory;
@@ -42,11 +45,9 @@ import org.springframework.util.StringUtils;
  *
  * @author Andy Wilkinson
  */
-public class DocumentAutoConfigurationClasses extends DefaultTask {
+public abstract class DocumentAutoConfigurationClasses extends DefaultTask {
 
 	private FileCollection autoConfiguration;
-
-	private File outputDir;
 
 	@InputFiles
 	public FileCollection getAutoConfiguration() {
@@ -58,16 +59,12 @@ public class DocumentAutoConfigurationClasses extends DefaultTask {
 	}
 
 	@OutputDirectory
-	public File getOutputDir() {
-		return this.outputDir;
-	}
-
-	public void setOutputDir(File outputDir) {
-		this.outputDir = outputDir;
-	}
+	public abstract DirectoryProperty getOutputDir();
 
 	@TaskAction
 	void documentAutoConfigurationClasses() throws IOException {
+		List<AutoConfiguration> autoConfigurations = load();
+		autoConfigurations.forEach(this::writeModuleAdoc);
 		for (File metadataFile : this.autoConfiguration) {
 			Properties metadata = new Properties();
 			try (Reader reader = new FileReader(metadataFile)) {
@@ -75,26 +72,56 @@ public class DocumentAutoConfigurationClasses extends DefaultTask {
 			}
 			AutoConfiguration autoConfiguration = new AutoConfiguration(metadata.getProperty("module"), new TreeSet<>(
 					StringUtils.commaDelimitedListToSet(metadata.getProperty("autoConfigurationClassNames"))));
-			writeTable(autoConfiguration);
+			writeModuleAdoc(autoConfiguration);
 		}
+		writeNavAdoc(autoConfigurations);
 	}
 
-	private void writeTable(AutoConfiguration autoConfigurationClasses) throws IOException {
-		this.outputDir.mkdirs();
+	private List<AutoConfiguration> load() {
+		return this.autoConfiguration.getFiles()
+			.stream()
+			.map(AutoConfiguration::of)
+			.sorted((a1, a2) -> a1.module.compareTo(a2.module))
+			.toList();
+	}
+
+	private void writeModuleAdoc(AutoConfiguration autoConfigurationClasses) {
+		File outputDir = getOutputDir().getAsFile().get();
+		outputDir.mkdirs();
 		try (PrintWriter writer = new PrintWriter(
-				new FileWriter(new File(this.outputDir, autoConfigurationClasses.module + ".adoc")))) {
+				new FileWriter(new File(outputDir, autoConfigurationClasses.module + ".adoc")))) {
+			writer.println("[[appendix.auto-configuration-classes.%s]]".formatted(autoConfigurationClasses.module));
+			writer.println("= %s".formatted(autoConfigurationClasses.module));
+			writer.println();
+			writer.println("The following auto-configuration classes are from the `%s` module:"
+				.formatted(autoConfigurationClasses.module));
+			writer.println();
 			writer.println("[cols=\"4,1\"]");
 			writer.println("|===");
 			writer.println("| Configuration Class | Links");
-
 			for (AutoConfigurationClass autoConfigurationClass : autoConfigurationClasses.classes) {
 				writer.println();
-				writer.printf("| {spring-boot-code}/spring-boot-project/%s/src/main/java/%s.java[`%s`]%n",
+				writer.printf("| {code-spring-boot}/spring-boot-project/%s/src/main/java/%s.java[`%s`]%n",
 						autoConfigurationClasses.module, autoConfigurationClass.path, autoConfigurationClass.name);
-				writer.printf("| {spring-boot-api}/%s.html[javadoc]%n", autoConfigurationClass.path);
+				writer.printf("| xref:api:java/%s.html[javadoc]%n", autoConfigurationClass.path);
 			}
-
 			writer.println("|===");
+		}
+		catch (IOException ex) {
+			throw new UncheckedIOException(ex);
+		}
+	}
+
+	private void writeNavAdoc(List<AutoConfiguration> autoConfigurations) {
+		File outputDir = getOutputDir().getAsFile().get();
+		outputDir.mkdirs();
+		try (PrintWriter writer = new PrintWriter(new FileWriter(new File(outputDir, "nav.adoc")))) {
+			autoConfigurations.forEach((autoConfigurationClasses) -> writer
+				.println("*** xref:appendix:auto-configuration-classes/%s.adoc[]"
+					.formatted(autoConfigurationClasses.module)));
+		}
+		catch (IOException ex) {
+			throw new UncheckedIOException(ex);
 		}
 	}
 
@@ -111,6 +138,18 @@ public class DocumentAutoConfigurationClasses extends DefaultTask {
 				String name = className.substring(className.lastIndexOf('.') + 1);
 				return new AutoConfigurationClass(name, path);
 			}).collect(Collectors.toCollection(TreeSet::new));
+		}
+
+		private static AutoConfiguration of(File metadataFile) {
+			Properties metadata = new Properties();
+			try (Reader reader = new FileReader(metadataFile)) {
+				metadata.load(reader);
+			}
+			catch (IOException ex) {
+				throw new UncheckedIOException(ex);
+			}
+			return new AutoConfiguration(metadata.getProperty("module"), new TreeSet<>(
+					StringUtils.commaDelimitedListToSet(metadata.getProperty("autoConfigurationClassNames"))));
 		}
 
 	}

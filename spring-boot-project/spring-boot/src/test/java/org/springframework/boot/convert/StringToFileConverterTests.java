@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,15 @@
 package org.springframework.boot.convert;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.provider.Arguments;
 
+import org.springframework.boot.testsupport.classpath.resources.WithResource;
 import org.springframework.core.convert.ConversionService;
+import org.springframework.core.io.ClassPathResource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests for {@link StringToFileConverter}.
  *
  * @author Phillip Webb
+ * @author Scott Frederick
  */
 class StringToFileConverterTests {
 
@@ -46,6 +50,14 @@ class StringToFileConverterTests {
 	void convertWhenFilePrefixedReturnsFile(ConversionService conversionService) {
 		assertThat(convert(conversionService, "file:" + this.temp.getAbsolutePath() + "/test").getAbsoluteFile())
 			.isEqualTo(new File(this.temp, "test").getAbsoluteFile());
+	}
+
+	@ConversionServiceTest
+	@WithResource(name = "com/example/test-file.txt", content = "test content")
+	void convertWhenClasspathPrefixedReturnsFile(ConversionService conversionService) throws IOException {
+		String resource = new ClassPathResource("com/example/test-file.txt").getURL().getFile();
+		assertThat(convert(conversionService, "classpath:com/example/test-file.txt").getAbsoluteFile())
+			.isEqualTo(new File(resource).getAbsoluteFile());
 	}
 
 	private File convert(ConversionService conversionService, String source) {

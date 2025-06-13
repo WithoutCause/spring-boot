@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,14 @@
 
 package org.springframework.boot.autoconfigure.cache;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Properties;
 import java.util.function.Consumer;
 
 import javax.cache.Caching;
@@ -46,7 +51,7 @@ import org.springframework.boot.autoconfigure.cache.support.MockCachingProvider;
 import org.springframework.boot.autoconfigure.cache.support.MockCachingProvider.MockCacheManager;
 import org.springframework.boot.autoconfigure.hazelcast.HazelcastAutoConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
-import org.springframework.boot.testsupport.classpath.ClassPathExclusions;
+import org.springframework.boot.testsupport.classpath.resources.WithResource;
 import org.springframework.cache.Cache;
 import org.springframework.cache.Cache.ValueWrapper;
 import org.springframework.cache.CacheManager;
@@ -76,8 +81,10 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 
@@ -89,7 +96,6 @@ import static org.mockito.Mockito.times;
  * @author Mark Paluch
  * @author Ryon Day
  */
-@ClassPathExclusions("hazelcast-client-*.jar")
 class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 
 	@Test
@@ -425,7 +431,7 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 	@Test
 	void jCacheCacheWithConfig() {
 		String cachingProviderFqn = MockCachingProvider.class.getName();
-		String configLocation = "org/springframework/boot/autoconfigure/hazelcast/hazelcast-specific.xml";
+		String configLocation = "org/springframework/boot/autoconfigure/cache/hazelcast-specific.xml";
 		this.contextRunner.withUserConfiguration(JCacheCustomConfiguration.class)
 			.withPropertyValues("spring.cache.type=jcache", "spring.cache.jcache.provider=" + cachingProviderFqn,
 					"spring.cache.jcache.config=" + configLocation)
@@ -445,7 +451,7 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 					"spring.cache.jcache.config=" + configLocation)
 			.run((context) -> assertThat(context).getFailure()
 				.isInstanceOf(BeanCreationException.class)
-				.hasMessageContaining("does not exist")
+				.hasMessageContaining("must exist")
 				.hasMessageContaining(configLocation));
 	}
 
@@ -461,6 +467,24 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 	}
 
 	@Test
+	void jCacheCacheWithPropertiesCustomizer() {
+		JCachePropertiesCustomizer customizer = mock(JCachePropertiesCustomizer.class);
+		willAnswer((invocation) -> {
+			invocation.getArgument(0, Properties.class).setProperty("customized", "true");
+			return null;
+		}).given(customizer).customize(any(Properties.class));
+		String cachingProviderFqn = MockCachingProvider.class.getName();
+		this.contextRunner.withUserConfiguration(DefaultCacheConfiguration.class)
+			.withPropertyValues("spring.cache.type=jcache", "spring.cache.jcache.provider=" + cachingProviderFqn)
+			.withBean(JCachePropertiesCustomizer.class, () -> customizer)
+			.run((context) -> {
+				JCacheCacheManager cacheManager = getCacheManager(context, JCacheCacheManager.class);
+				assertThat(cacheManager.getCacheManager().getProperties()).containsEntry("customized", "true");
+			});
+	}
+
+	@Test
+	@WithHazelcastXmlResource
 	void hazelcastCacheExplicit() {
 		this.contextRunner.withConfiguration(AutoConfigurations.of(HazelcastAutoConfiguration.class))
 			.withUserConfiguration(DefaultCacheConfiguration.class)
@@ -476,6 +500,7 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 	}
 
 	@Test
+	@WithHazelcastXmlResource
 	void hazelcastCacheWithCustomizers() {
 		this.contextRunner.withUserConfiguration(HazelcastCacheAndCustomizersConfiguration.class)
 			.withPropertyValues("spring.cache.type=hazelcast")
@@ -494,7 +519,7 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 
 	@Test
 	void hazelcastCacheWithHazelcastAutoConfiguration() {
-		String hazelcastConfig = "org/springframework/boot/autoconfigure/hazelcast/hazelcast-specific.xml";
+		String hazelcastConfig = "org/springframework/boot/autoconfigure/cache/hazelcast-specific.xml";
 		this.contextRunner.withConfiguration(AutoConfigurations.of(HazelcastAutoConfiguration.class))
 			.withUserConfiguration(DefaultCacheConfiguration.class)
 			.withPropertyValues("spring.cache.type=hazelcast", "spring.hazelcast.config=" + hazelcastConfig)
@@ -528,10 +553,31 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 	}
 
 	@Test
+	@WithResource(name = "hazelcast-specific.xml", content = """
+			<hazelcast xsi:schemaLocation="http://www.hazelcast.com/schema/config hazelcast-config-5.0.xsd"
+					   xmlns="http://www.hazelcast.com/schema/config"
+					   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+				<queue name="foobar"/>
+
+				<map name="foobar">
+					<time-to-live-seconds>3600</time-to-live-seconds>
+					<max-idle-seconds>600</max-idle-seconds>
+				</map>
+
+				<network>
+					<join>
+						<auto-detection enabled="false" />
+						<multicast enabled="false"/>
+					</join>
+				</network>
+
+			</hazelcast>
+			""")
 	void hazelcastAsJCacheWithConfig() {
 		String cachingProviderFqn = HazelcastServerCachingProvider.class.getName();
 		try {
-			String configLocation = "org/springframework/boot/autoconfigure/hazelcast/hazelcast-specific.xml";
+			String configLocation = "hazelcast-specific.xml";
 			this.contextRunner.withUserConfiguration(DefaultCacheConfiguration.class)
 				.withPropertyValues("spring.cache.type=jcache", "spring.cache.jcache.provider=" + cachingProviderFqn,
 						"spring.cache.jcache.config=" + configLocation)
@@ -548,6 +594,7 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 	}
 
 	@Test
+	@WithHazelcastXmlResource
 	void hazelcastAsJCacheWithExistingHazelcastInstance() {
 		String cachingProviderFqn = HazelcastServerCachingProvider.class.getName();
 		this.contextRunner.withConfiguration(AutoConfigurations.of(HazelcastAutoConfiguration.class))
@@ -567,6 +614,7 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 	}
 
 	@Test
+	@WithInfinispanXmlResource
 	void infinispanCacheWithConfig() {
 		this.contextRunner.withUserConfiguration(DefaultCacheConfiguration.class)
 			.withPropertyValues("spring.cache.type=infinispan", "spring.cache.infinispan.config=infinispan.xml")
@@ -615,6 +663,7 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 	}
 
 	@Test
+	@WithInfinispanXmlResource
 	void infinispanAsJCacheWithConfig() {
 		String cachingProviderClassName = JCachingProvider.class.getName();
 		String configLocation = "infinispan.xml";
@@ -1055,6 +1104,47 @@ class CacheAutoConfigurationTests extends AbstractCacheAutoConfigurationTests {
 			}
 			return bean;
 		}
+
+	}
+
+	@Target(ElementType.METHOD)
+	@Retention(RetentionPolicy.RUNTIME)
+	@WithResource(name = "infinispan.xml", content = """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<infinispan>
+
+				<!-- ************************************** -->
+				<!-- Corresponds to @Cacheable("cache-name") -->
+				<!-- ************************************** -->
+				<cache-container default-cache="default">
+					<local-cache name="default"/>
+					<local-cache name="foo"/>
+					<local-cache name="bar" />
+				</cache-container>
+
+			</infinispan>
+			""")
+	@interface WithInfinispanXmlResource {
+
+	}
+
+	@Target(ElementType.METHOD)
+	@Retention(RetentionPolicy.RUNTIME)
+	@WithResource(name = "hazelcast.xml", content = """
+			<hazelcast
+				xsi:schemaLocation="http://www.hazelcast.com/schema/config hazelcast-config-5.0.xsd"
+				xmlns="http://www.hazelcast.com/schema/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+				<instance-name>default-instance</instance-name>
+				<map name="defaultCache" />
+				<network>
+					<join>
+						<auto-detection enabled="false" />
+						<multicast enabled="false" />
+					</join>
+				</network>
+			</hazelcast>
+			""")
+	@interface WithHazelcastXmlResource {
 
 	}
 

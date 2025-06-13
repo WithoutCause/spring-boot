@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -46,8 +47,12 @@ import org.springframework.core.ResolvableType;
  *
  * @author Phillip Webb
  * @author Madhura Bhave
+ * @author Lasse Wulff
  */
 class JavaBeanBinder implements DataObjectBinder {
+
+	private static final String HAS_KNOWN_BINDABLE_PROPERTIES_CACHE = JavaBeanBinder.class.getName()
+			+ ".HAS_KNOWN_BINDABLE_PROPERTIES_CACHE";
 
 	static final JavaBeanBinder INSTANCE = new JavaBeanBinder();
 
@@ -55,7 +60,7 @@ class JavaBeanBinder implements DataObjectBinder {
 	public <T> T bind(ConfigurationPropertyName name, Bindable<T> target, Context context,
 			DataObjectPropertyBinder propertyBinder) {
 		boolean hasKnownBindableProperties = target.getValue() != null && hasKnownBindableProperties(name, context);
-		Bean<T> bean = Bean.get(target, hasKnownBindableProperties);
+		Bean<T> bean = Bean.get(target, context, hasKnownBindableProperties);
 		if (bean == null) {
 			return null;
 		}
@@ -72,12 +77,32 @@ class JavaBeanBinder implements DataObjectBinder {
 	}
 
 	private boolean hasKnownBindableProperties(ConfigurationPropertyName name, Context context) {
+		Map<ConfigurationPropertyName, Boolean> cache = getHasKnownBindablePropertiesCache(context);
+		Boolean hasKnownBindableProperties = cache.get(name);
+		if (hasKnownBindableProperties == null) {
+			hasKnownBindableProperties = computeHasKnownBindableProperties(name, context);
+			cache.put(name, hasKnownBindableProperties);
+		}
+		return hasKnownBindableProperties;
+	}
+
+	private boolean computeHasKnownBindableProperties(ConfigurationPropertyName name, Context context) {
 		for (ConfigurationPropertySource source : context.getSources()) {
 			if (source.containsDescendantOf(name) == ConfigurationPropertyState.PRESENT) {
 				return true;
 			}
 		}
 		return false;
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<ConfigurationPropertyName, Boolean> getHasKnownBindablePropertiesCache(Context context) {
+		Object cache = context.getCache().get(HAS_KNOWN_BINDABLE_PROPERTIES_CACHE);
+		if (cache == null) {
+			cache = new ConcurrentHashMap<ConfigurationPropertyName, Boolean>();
+			context.getCache().put(HAS_KNOWN_BINDABLE_PROPERTIES_CACHE, cache);
+		}
+		return (Map<ConfigurationPropertyName, Boolean>) cache;
 	}
 
 	private <T> boolean bind(DataObjectPropertyBinder propertyBinder, Bean<T> bean, BeanSupplier<T> beanSupplier,
@@ -92,7 +117,7 @@ class JavaBeanBinder implements DataObjectBinder {
 
 	private <T> boolean bind(BeanSupplier<T> beanSupplier, DataObjectPropertyBinder propertyBinder,
 			BeanProperty property) {
-		String propertyName = property.getName();
+		String propertyName = determinePropertyName(property);
 		ResolvableType type = property.getType();
 		Supplier<Object> value = property.getValue(beanSupplier);
 		Annotation[] annotations = property.getAnnotations();
@@ -108,6 +133,15 @@ class JavaBeanBinder implements DataObjectBinder {
 			throw new IllegalStateException("No setter found for property: " + property.getName());
 		}
 		return true;
+	}
+
+	private String determinePropertyName(BeanProperty property) {
+		return Arrays.stream((property.getAnnotations() != null) ? property.getAnnotations() : new Annotation[0])
+			.filter((annotation) -> annotation.annotationType() == Name.class)
+			.findFirst()
+			.map(Name.class::cast)
+			.map(Name::value)
+			.orElse(property.getName());
 	}
 
 	/**
@@ -226,8 +260,6 @@ class JavaBeanBinder implements DataObjectBinder {
 	 */
 	static class Bean<T> extends BeanProperties {
 
-		private static Bean<?> cached;
-
 		Bean(ResolvableType type, Class<?> resolvedType) {
 			super(type, resolvedType);
 		}
@@ -247,7 +279,7 @@ class JavaBeanBinder implements DataObjectBinder {
 		}
 
 		@SuppressWarnings("unchecked")
-		static <T> Bean<T> get(Bindable<T> bindable, boolean canCallGetValue) {
+		static <T> Bean<T> get(Bindable<T> bindable, Context context, boolean canCallGetValue) {
 			ResolvableType type = bindable.getType();
 			Class<?> resolvedType = type.resolve(Object.class);
 			Supplier<T> value = bindable.getValue();
@@ -259,12 +291,24 @@ class JavaBeanBinder implements DataObjectBinder {
 			if (instance == null && !isInstantiable(resolvedType)) {
 				return null;
 			}
-			Bean<?> bean = Bean.cached;
-			if (bean == null || !bean.isOfType(type, resolvedType)) {
+			Map<CacheKey, Bean<?>> cache = getCache(context);
+			CacheKey cacheKey = new CacheKey(type, resolvedType);
+			Bean<?> bean = cache.get(cacheKey);
+			if (bean == null) {
 				bean = new Bean<>(type, resolvedType);
-				cached = bean;
+				cache.put(cacheKey, bean);
 			}
 			return (Bean<T>) bean;
+		}
+
+		@SuppressWarnings("unchecked")
+		private static Map<CacheKey, Bean<?>> getCache(Context context) {
+			Map<CacheKey, Bean<?>> cache = (Map<CacheKey, Bean<?>>) context.getCache().get(Bean.class);
+			if (cache == null) {
+				cache = new ConcurrentHashMap<>();
+				context.getCache().put(Bean.class, cache);
+			}
+			return cache;
 		}
 
 		private static boolean isInstantiable(Class<?> type) {
@@ -280,11 +324,8 @@ class JavaBeanBinder implements DataObjectBinder {
 			}
 		}
 
-		private boolean isOfType(ResolvableType type, Class<?> resolvedType) {
-			if (getType().hasGenerics() || type.hasGenerics()) {
-				return getType().equals(type);
-			}
-			return getResolvedType() != null && getResolvedType().equals(resolvedType);
+		private record CacheKey(ResolvableType type, Class<?> resolvedType) {
+
 		}
 
 	}
@@ -417,6 +458,10 @@ class JavaBeanBinder implements DataObjectBinder {
 
 		Method getSetter() {
 			return this.setter;
+		}
+
+		Field getField() {
+			return this.field;
 		}
 
 	}

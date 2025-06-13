@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -155,6 +155,7 @@ public class UndertowWebServer implements WebServer {
 			closeable.close();
 		}
 		catch (Exception ex) {
+			// Ignore
 		}
 	}
 
@@ -174,7 +175,7 @@ public class UndertowWebServer implements WebServer {
 				this.closeables.add(closeable);
 			}
 			if (handler instanceof GracefulShutdownHandler shutdownHandler) {
-				Assert.isNull(this.gracefulShutdown, "Only a single GracefulShutdownHandler can be defined");
+				Assert.state(this.gracefulShutdown == null, "Only a single GracefulShutdownHandler can be defined");
 				this.gracefulShutdown = shutdownHandler;
 			}
 		}
@@ -297,6 +298,24 @@ public class UndertowWebServer implements WebServer {
 		return ports.get(0).getNumber();
 	}
 
+	/**
+	 * Returns the {@link Undertow Undertow server}. Returns {@code null} until the server
+	 * has been started.
+	 * @return the Undertow server or {@code null} if the server hasn't been started yet
+	 * @since 3.3.0
+	 */
+	public Undertow getUndertow() {
+		return this.undertow;
+	}
+
+	/**
+	 * Initiates a graceful shutdown of the Undertow web server. Handling of new requests
+	 * is prevented and the given {@code callback} is invoked at the end of the attempt.
+	 * The attempt can be explicitly ended by invoking {@link #stop}.
+	 * <p>
+	 * Once shutdown has been initiated Undertow will return an {@code HTTP 503} response
+	 * for any new or existing connections.
+	 */
 	@Override
 	public void shutDownGracefully(GracefulShutdownCallback callback) {
 		if (this.gracefulShutdown == null) {

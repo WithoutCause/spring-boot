@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.springframework.boot.web.embedded.tomcat;
 
+import java.util.Collections;
+
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.commons.logging.Log;
@@ -26,10 +28,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import org.springframework.boot.testsupport.classpath.resources.WithPackageResources;
+import org.springframework.boot.testsupport.ssl.MockPkcs11Security;
+import org.springframework.boot.testsupport.ssl.MockPkcs11SecurityProvider;
 import org.springframework.boot.testsupport.system.OutputCaptureExtension;
 import org.springframework.boot.testsupport.web.servlet.DirtiesUrlFactories;
-import org.springframework.boot.web.embedded.test.MockPkcs11Security;
-import org.springframework.boot.web.embedded.test.MockPkcs11SecurityProvider;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServerSslBundle;
 
@@ -69,6 +72,7 @@ class SslConnectorCustomizerTests {
 	}
 
 	@Test
+	@WithPackageResources("test.jks")
 	void sslCiphersConfiguration() throws Exception {
 		Ssl ssl = new Ssl();
 		ssl.setKeyStore("classpath:test.jks");
@@ -76,22 +80,23 @@ class SslConnectorCustomizerTests {
 		ssl.setCiphers(new String[] { "ALPHA", "BRAVO", "CHARLIE" });
 		Connector connector = this.tomcat.getConnector();
 		SslConnectorCustomizer customizer = new SslConnectorCustomizer(this.logger, connector, ssl.getClientAuth());
-		customizer.customize(WebServerSslBundle.get(ssl));
+		customizer.customize(WebServerSslBundle.get(ssl), Collections.emptyMap());
 		this.tomcat.start();
 		SSLHostConfig[] sslHostConfigs = connector.getProtocolHandler().findSslHostConfigs();
 		assertThat(sslHostConfigs[0].getCiphers()).isEqualTo("ALPHA:BRAVO:CHARLIE");
 	}
 
 	@Test
+	@WithPackageResources("test.jks")
 	void sslEnabledMultipleProtocolsConfiguration() throws Exception {
 		Ssl ssl = new Ssl();
 		ssl.setKeyPassword("password");
-		ssl.setKeyStore("src/test/resources/test.jks");
+		ssl.setKeyStore("classpath:test.jks");
 		ssl.setEnabledProtocols(new String[] { "TLSv1.1", "TLSv1.2" });
 		ssl.setCiphers(new String[] { "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256", "BRAVO" });
 		Connector connector = this.tomcat.getConnector();
 		SslConnectorCustomizer customizer = new SslConnectorCustomizer(this.logger, connector, ssl.getClientAuth());
-		customizer.customize(WebServerSslBundle.get(ssl));
+		customizer.customize(WebServerSslBundle.get(ssl), Collections.emptyMap());
 		this.tomcat.start();
 		SSLHostConfig sslHostConfig = connector.getProtocolHandler().findSslHostConfigs()[0];
 		assertThat(sslHostConfig.getSslProtocol()).isEqualTo("TLS");
@@ -99,15 +104,16 @@ class SslConnectorCustomizerTests {
 	}
 
 	@Test
+	@WithPackageResources("test.jks")
 	void sslEnabledProtocolsConfiguration() throws Exception {
 		Ssl ssl = new Ssl();
 		ssl.setKeyPassword("password");
-		ssl.setKeyStore("src/test/resources/test.jks");
+		ssl.setKeyStore("classpath:test.jks");
 		ssl.setEnabledProtocols(new String[] { "TLSv1.2" });
 		ssl.setCiphers(new String[] { "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256", "BRAVO" });
 		Connector connector = this.tomcat.getConnector();
 		SslConnectorCustomizer customizer = new SslConnectorCustomizer(this.logger, connector, ssl.getClientAuth());
-		customizer.customize(WebServerSslBundle.get(ssl));
+		customizer.customize(WebServerSslBundle.get(ssl), Collections.emptyMap());
 		this.tomcat.start();
 		SSLHostConfig sslHostConfig = connector.getProtocolHandler().findSslHostConfigs()[0];
 		assertThat(sslHostConfig.getSslProtocol()).isEqualTo("TLS");
@@ -119,21 +125,22 @@ class SslConnectorCustomizerTests {
 		assertThatIllegalStateException().isThrownBy(() -> {
 			SslConnectorCustomizer customizer = new SslConnectorCustomizer(this.logger, this.tomcat.getConnector(),
 					Ssl.ClientAuth.NONE);
-			customizer.customize(WebServerSslBundle.get(new Ssl()));
+			customizer.customize(WebServerSslBundle.get(new Ssl()), Collections.emptyMap());
 		}).withMessageContaining("SSL is enabled but no trust material is configured");
 	}
 
 	@Test
+	@WithPackageResources("test.jks")
 	void customizeWhenSslIsEnabledWithPkcs11AndKeyStoreThrowsException() {
 		Ssl ssl = new Ssl();
 		ssl.setKeyStoreType("PKCS11");
 		ssl.setKeyStoreProvider(MockPkcs11SecurityProvider.NAME);
-		ssl.setKeyStore("src/test/resources/test.jks");
+		ssl.setKeyStore("classpath:test.jks");
 		ssl.setKeyPassword("password");
 		assertThatIllegalStateException().isThrownBy(() -> {
 			SslConnectorCustomizer customizer = new SslConnectorCustomizer(this.logger, this.tomcat.getConnector(),
 					ssl.getClientAuth());
-			customizer.customize(WebServerSslBundle.get(ssl));
+			customizer.customize(WebServerSslBundle.get(ssl), Collections.emptyMap());
 		}).withMessageContaining("must be empty or null for PKCS11 hardware key stores");
 	}
 
@@ -145,7 +152,8 @@ class SslConnectorCustomizerTests {
 		ssl.setKeyStorePassword("1234");
 		SslConnectorCustomizer customizer = new SslConnectorCustomizer(this.logger, this.tomcat.getConnector(),
 				ssl.getClientAuth());
-		assertThatNoException().isThrownBy(() -> customizer.customize(WebServerSslBundle.get(ssl)));
+		assertThatNoException()
+			.isThrownBy(() -> customizer.customize(WebServerSslBundle.get(ssl), Collections.emptyMap()));
 	}
 
 }

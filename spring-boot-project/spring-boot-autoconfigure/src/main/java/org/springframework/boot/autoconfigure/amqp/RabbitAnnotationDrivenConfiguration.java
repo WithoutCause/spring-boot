@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -76,14 +76,13 @@ class RabbitAnnotationDrivenConfiguration {
 	@ConditionalOnThreading(Threading.VIRTUAL)
 	SimpleRabbitListenerContainerFactoryConfigurer simpleRabbitListenerContainerFactoryConfigurerVirtualThreads() {
 		SimpleRabbitListenerContainerFactoryConfigurer configurer = simpleListenerConfigurer();
-		configurer.setTaskExecutor(new VirtualThreadTaskExecutor());
+		configurer.setTaskExecutor(new VirtualThreadTaskExecutor("rabbit-simple-"));
 		return configurer;
 	}
 
 	@Bean(name = "rabbitListenerContainerFactory")
 	@ConditionalOnMissingBean(name = "rabbitListenerContainerFactory")
-	@ConditionalOnProperty(prefix = "spring.rabbitmq.listener", name = "type", havingValue = "simple",
-			matchIfMissing = true)
+	@ConditionalOnProperty(name = "spring.rabbitmq.listener.type", havingValue = "simple", matchIfMissing = true)
 	SimpleRabbitListenerContainerFactory simpleRabbitListenerContainerFactory(
 			SimpleRabbitListenerContainerFactoryConfigurer configurer, ConnectionFactory connectionFactory,
 			ObjectProvider<ContainerCustomizer<SimpleMessageListenerContainer>> simpleContainerCustomizer) {
@@ -105,13 +104,13 @@ class RabbitAnnotationDrivenConfiguration {
 	@ConditionalOnThreading(Threading.VIRTUAL)
 	DirectRabbitListenerContainerFactoryConfigurer directRabbitListenerContainerFactoryConfigurerVirtualThreads() {
 		DirectRabbitListenerContainerFactoryConfigurer configurer = directListenerConfigurer();
-		configurer.setTaskExecutor(new VirtualThreadTaskExecutor());
+		configurer.setTaskExecutor(new VirtualThreadTaskExecutor("rabbit-direct-"));
 		return configurer;
 	}
 
 	@Bean(name = "rabbitListenerContainerFactory")
 	@ConditionalOnMissingBean(name = "rabbitListenerContainerFactory")
-	@ConditionalOnProperty(prefix = "spring.rabbitmq.listener", name = "type", havingValue = "direct")
+	@ConditionalOnProperty(name = "spring.rabbitmq.listener.type", havingValue = "direct")
 	DirectRabbitListenerContainerFactory directRabbitListenerContainerFactory(
 			DirectRabbitListenerContainerFactoryConfigurer configurer, ConnectionFactory connectionFactory,
 			ObjectProvider<ContainerCustomizer<DirectMessageListenerContainer>> directContainerCustomizer) {

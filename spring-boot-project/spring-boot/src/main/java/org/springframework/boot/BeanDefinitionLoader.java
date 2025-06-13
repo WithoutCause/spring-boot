@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -81,8 +81,8 @@ class BeanDefinitionLoader {
 	 * @param sources the bean sources
 	 */
 	BeanDefinitionLoader(BeanDefinitionRegistry registry, Object... sources) {
-		Assert.notNull(registry, "Registry must not be null");
-		Assert.notEmpty(sources, "Sources must not be empty");
+		Assert.notNull(registry, "'registry' must not be null");
+		Assert.notEmpty(sources, "'sources' must not be empty");
 		this.sources = sources;
 		this.annotatedReader = new AnnotatedBeanDefinitionReader(registry);
 		this.xmlReader = new XmlBeanDefinitionReader(registry);
@@ -131,9 +131,9 @@ class BeanDefinitionLoader {
 	}
 
 	private void load(Object source) {
-		Assert.notNull(source, "Source must not be null");
-		if (source instanceof Class<?> clazz) {
-			load(clazz);
+		Assert.notNull(source, "'source' must not be null");
+		if (source instanceof Class<?> type) {
+			load(type);
 			return;
 		}
 		if (source instanceof Resource resource) {
@@ -305,8 +305,8 @@ class BeanDefinitionLoader {
 		ClassExcludeFilter(Object... sources) {
 			super(false, false);
 			for (Object source : sources) {
-				if (source instanceof Class<?>) {
-					this.classNames.add(((Class<?>) source).getName());
+				if (source instanceof Class<?> classSource) {
+					this.classNames.add(classSource.getName());
 				}
 			}
 		}

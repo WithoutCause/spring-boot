@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Phillip Webb
  */
 @AssertFileChannelDataBlocksClosed
-class WarLauncherTests extends AbstractExecutableArchiveLauncherTests {
+class WarLauncherTests extends AbstractLauncherTests {
 
 	@Test
 	void explodedWarHasOnlyWebInfClassesAndContentsOfWebInfLibOnClasspath() throws Exception {
@@ -84,10 +84,6 @@ class WarLauncherTests extends AbstractExecutableArchiveLauncherTests {
 		List<File> expectedFiles = getExpectedFilesWithExtraLibs(explodedRoot);
 		URL[] expectedFileUrls = expectedFiles.stream().map(this::toUrl).toArray(URL[]::new);
 		assertThat(urls).containsExactly(expectedFileUrls);
-	}
-
-	private URLClassLoader createClassLoader(Launcher launcher) throws Exception {
-		return (URLClassLoader) launcher.createClassLoader(launcher.getClassPathUrls());
 	}
 
 	private URL[] getExpectedFileUrls(File explodedRoot) {

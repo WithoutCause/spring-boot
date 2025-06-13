@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package org.springframework.boot.docker.compose.core;
 import java.util.Map;
 
 /**
- * Provides details of a running docker compose service.
+ * Provides details of a running Docker Compose service.
  *
  * @author Moritz Halbritter
  * @author Andy Wilkinson
@@ -63,5 +63,14 @@ public interface RunningService {
 	 * @return the service labels
 	 */
 	Map<String, String> labels();
+
+	/**
+	 * Return the Docker Compose file for the service.
+	 * @return the Docker Compose file
+	 * @since 3.5.0
+	 */
+	default DockerComposeFile composeFile() {
+		return null;
+	}
 
 }

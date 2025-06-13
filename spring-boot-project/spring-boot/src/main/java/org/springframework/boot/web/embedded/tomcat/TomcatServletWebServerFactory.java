@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -107,6 +107,7 @@ import org.springframework.util.StringUtils;
  * @author Christoffer Sawicki
  * @author Dawid Antecki
  * @author Moritz Halbritter
+ * @author Scott Frederick
  * @since 2.0.0
  * @see #setPort(int)
  * @see #setContextLifecycleListeners(Collection)
@@ -134,8 +135,6 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 
 	private List<LifecycleListener> contextLifecycleListeners = new ArrayList<>();
 
-	private final List<LifecycleListener> serverLifecycleListeners = getDefaultServerLifecycleListeners();
-
 	private Set<TomcatContextCustomizer> tomcatContextCustomizers = new LinkedHashSet<>();
 
 	private Set<TomcatConnectorCustomizer> tomcatConnectorCustomizers = new LinkedHashSet<>();
@@ -157,6 +156,8 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	private int backgroundProcessorDelay;
 
 	private boolean disableMBeanRegistry = true;
+
+	private boolean useApr;
 
 	/**
 	 * Create a new {@link TomcatServletWebServerFactory} instance.
@@ -183,13 +184,10 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		super(contextPath, port);
 	}
 
-	private static List<LifecycleListener> getDefaultServerLifecycleListeners() {
+	private List<LifecycleListener> getDefaultServerLifecycleListeners() {
 		ArrayList<LifecycleListener> lifecycleListeners = new ArrayList<>();
-		if (!NativeDetector.inNativeImage()) {
-			AprLifecycleListener aprLifecycleListener = new AprLifecycleListener();
-			if (AprLifecycleListener.isAprAvailable()) {
-				lifecycleListeners.add(aprLifecycleListener);
-			}
+		if (!NativeDetector.inNativeImage() && this.useApr) {
+			lifecycleListeners.add(new AprLifecycleListener());
 		}
 		return lifecycleListeners;
 	}
@@ -202,7 +200,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		Tomcat tomcat = new Tomcat();
 		File baseDir = (this.baseDirectory != null) ? this.baseDirectory : createTempDir("tomcat");
 		tomcat.setBaseDir(baseDir.getAbsolutePath());
-		for (LifecycleListener listener : this.serverLifecycleListeners) {
+		for (LifecycleListener listener : getDefaultServerLifecycleListeners()) {
 			tomcat.getServer().addLifecycleListener(listener);
 		}
 		Connector connector = new Connector(this.protocol);
@@ -237,9 +235,10 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	protected void prepareContext(Host host, ServletContextInitializer[] initializers) {
 		File documentRoot = getValidDocumentRoot();
 		TomcatEmbeddedContext context = new TomcatEmbeddedContext();
-		if (documentRoot != null) {
-			context.setResources(new LoaderHidingResourceRoot(context));
-		}
+		WebResourceRoot resourceRoot = (documentRoot != null) ? new LoaderHidingResourceRoot(context)
+				: new StandardRoot(context);
+		ignoringNoSuchMethodError(() -> resourceRoot.setReadOnly(true));
+		context.setResources(resourceRoot);
 		context.setName(getContextPath());
 		context.setDisplayName(getDisplayName());
 		context.setPath(getContextPath());
@@ -251,12 +250,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		context.setParentClassLoader(parentClassLoader);
 		resetDefaultLocaleMapping(context);
 		addLocaleMappings(context);
-		try {
-			context.setCreateUploadTargets(true);
-		}
-		catch (NoSuchMethodError ex) {
-			// Tomcat is < 8.5.39. Continue.
-		}
+		context.setCreateUploadTargets(true);
 		configureTldPatterns(context);
 		WebappLoader loader = new WebappLoader();
 		loader.setLoaderInstance(new TomcatEmbeddedWebappClassLoader(parentClassLoader));
@@ -274,6 +268,14 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		host.addChild(context);
 		configureContext(context, initializersToUse);
 		postProcessContext(context);
+	}
+
+	private void ignoringNoSuchMethodError(Runnable method) {
+		try {
+			method.run();
+		}
+		catch (NoSuchMethodError ex) {
+		}
 	}
 
 	/**
@@ -344,8 +346,8 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		if (StringUtils.hasText(getServerHeader())) {
 			connector.setProperty("server", getServerHeader());
 		}
-		if (connector.getProtocolHandler() instanceof AbstractProtocol) {
-			customizeProtocol((AbstractProtocol<?>) connector.getProtocolHandler());
+		if (connector.getProtocolHandler() instanceof AbstractProtocol<?> abstractProtocol) {
+			customizeProtocol(abstractProtocol);
 		}
 		invokeProtocolHandlerCustomizers(connector.getProtocolHandler());
 		if (getUriEncoding() != null) {
@@ -379,10 +381,17 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 
 	private void customizeSsl(Connector connector) {
 		SslConnectorCustomizer customizer = new SslConnectorCustomizer(logger, connector, getSsl().getClientAuth());
-		customizer.customize(getSslBundle());
-		String sslBundleName = getSsl().getBundle();
+		customizer.customize(getSslBundle(), getServerNameSslBundles());
+		addBundleUpdateHandler(null, getSsl().getBundle(), customizer);
+		getSsl().getServerNameBundles()
+			.forEach((serverNameSslBundle) -> addBundleUpdateHandler(serverNameSslBundle.serverName(),
+					serverNameSslBundle.bundle(), customizer));
+	}
+
+	private void addBundleUpdateHandler(String serverName, String sslBundleName, SslConnectorCustomizer customizer) {
 		if (StringUtils.hasText(sslBundleName)) {
-			getSslBundles().addBundleUpdateHandler(sslBundleName, customizer::update);
+			getSslBundles().addBundleUpdateHandler(sslBundleName,
+					(sslBundle) -> customizer.update(serverName, sslBundle));
 		}
 	}
 
@@ -520,7 +529,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 
 	/**
 	 * Returns a mutable set of the patterns that match jars to ignore for TLD scanning.
-	 * @return the list of jars to ignore for TLD scanning
+	 * @return the set of jars to ignore for TLD scanning
 	 */
 	public Set<String> getTldSkipPatterns() {
 		return this.tldSkipPatterns;
@@ -532,7 +541,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param patterns the jar patterns to skip when scanning for TLDs etc
 	 */
 	public void setTldSkipPatterns(Collection<String> patterns) {
-		Assert.notNull(patterns, "Patterns must not be null");
+		Assert.notNull(patterns, "'patterns' must not be null");
 		this.tldSkipPatterns = new LinkedHashSet<>(patterns);
 	}
 
@@ -542,7 +551,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param patterns the additional jar patterns to skip when scanning for TLDs etc
 	 */
 	public void addTldSkipPatterns(String... patterns) {
-		Assert.notNull(patterns, "Patterns must not be null");
+		Assert.notNull(patterns, "'patterns' must not be null");
 		this.tldSkipPatterns.addAll(Arrays.asList(patterns));
 	}
 
@@ -552,7 +561,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @see Connector#Connector(String)
 	 */
 	public void setProtocol(String protocol) {
-		Assert.hasLength(protocol, "Protocol must not be empty");
+		Assert.hasLength(protocol, "'protocol' must not be empty");
 		this.protocol = protocol;
 	}
 
@@ -562,7 +571,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param engineValves the valves to set
 	 */
 	public void setEngineValves(Collection<? extends Valve> engineValves) {
-		Assert.notNull(engineValves, "Valves must not be null");
+		Assert.notNull(engineValves, "'engineValves' must not be null");
 		this.engineValves = new ArrayList<>(engineValves);
 	}
 
@@ -577,7 +586,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 
 	@Override
 	public void addEngineValves(Valve... engineValves) {
-		Assert.notNull(engineValves, "Valves must not be null");
+		Assert.notNull(engineValves, "'engineValves' must not be null");
 		this.engineValves.addAll(Arrays.asList(engineValves));
 	}
 
@@ -587,7 +596,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param contextValves the valves to set
 	 */
 	public void setContextValves(Collection<? extends Valve> contextValves) {
-		Assert.notNull(contextValves, "Valves must not be null");
+		Assert.notNull(contextValves, "'contextValves' must not be null");
 		this.contextValves = new ArrayList<>(contextValves);
 	}
 
@@ -606,7 +615,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param contextValves the valves to add
 	 */
 	public void addContextValves(Valve... contextValves) {
-		Assert.notNull(contextValves, "Valves must not be null");
+		Assert.notNull(contextValves, "'contextValves' must not be null");
 		this.contextValves.addAll(Arrays.asList(contextValves));
 	}
 
@@ -616,7 +625,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param contextLifecycleListeners the listeners to set
 	 */
 	public void setContextLifecycleListeners(Collection<? extends LifecycleListener> contextLifecycleListeners) {
-		Assert.notNull(contextLifecycleListeners, "ContextLifecycleListeners must not be null");
+		Assert.notNull(contextLifecycleListeners, "'contextLifecycleListeners' must not be null");
 		this.contextLifecycleListeners = new ArrayList<>(contextLifecycleListeners);
 	}
 
@@ -634,7 +643,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param contextLifecycleListeners the listeners to add
 	 */
 	public void addContextLifecycleListeners(LifecycleListener... contextLifecycleListeners) {
-		Assert.notNull(contextLifecycleListeners, "ContextLifecycleListeners must not be null");
+		Assert.notNull(contextLifecycleListeners, "'contextLifecycleListeners' must not be null");
 		this.contextLifecycleListeners.addAll(Arrays.asList(contextLifecycleListeners));
 	}
 
@@ -644,7 +653,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param tomcatContextCustomizers the customizers to set
 	 */
 	public void setTomcatContextCustomizers(Collection<? extends TomcatContextCustomizer> tomcatContextCustomizers) {
-		Assert.notNull(tomcatContextCustomizers, "TomcatContextCustomizers must not be null");
+		Assert.notNull(tomcatContextCustomizers, "'tomcatContextCustomizers' must not be null");
 		this.tomcatContextCustomizers = new LinkedHashSet<>(tomcatContextCustomizers);
 	}
 
@@ -659,7 +668,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 
 	@Override
 	public void addContextCustomizers(TomcatContextCustomizer... tomcatContextCustomizers) {
-		Assert.notNull(tomcatContextCustomizers, "TomcatContextCustomizers must not be null");
+		Assert.notNull(tomcatContextCustomizers, "'tomcatContextCustomizers' must not be null");
 		this.tomcatContextCustomizers.addAll(Arrays.asList(tomcatContextCustomizers));
 	}
 
@@ -670,13 +679,13 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 */
 	public void setTomcatConnectorCustomizers(
 			Collection<? extends TomcatConnectorCustomizer> tomcatConnectorCustomizers) {
-		Assert.notNull(tomcatConnectorCustomizers, "TomcatConnectorCustomizers must not be null");
+		Assert.notNull(tomcatConnectorCustomizers, "'tomcatConnectorCustomizers' must not be null");
 		this.tomcatConnectorCustomizers = new LinkedHashSet<>(tomcatConnectorCustomizers);
 	}
 
 	@Override
 	public void addConnectorCustomizers(TomcatConnectorCustomizer... tomcatConnectorCustomizers) {
-		Assert.notNull(tomcatConnectorCustomizers, "TomcatConnectorCustomizers must not be null");
+		Assert.notNull(tomcatConnectorCustomizers, "'tomcatConnectorCustomizers' must not be null");
 		this.tomcatConnectorCustomizers.addAll(Arrays.asList(tomcatConnectorCustomizers));
 	}
 
@@ -697,7 +706,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 */
 	public void setTomcatProtocolHandlerCustomizers(
 			Collection<? extends TomcatProtocolHandlerCustomizer<?>> tomcatProtocolHandlerCustomizer) {
-		Assert.notNull(tomcatProtocolHandlerCustomizer, "TomcatProtocolHandlerCustomizers must not be null");
+		Assert.notNull(tomcatProtocolHandlerCustomizer, "'tomcatProtocolHandlerCustomizer' must not be null");
 		this.tomcatProtocolHandlerCustomizers = new LinkedHashSet<>(tomcatProtocolHandlerCustomizer);
 	}
 
@@ -709,7 +718,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 */
 	@Override
 	public void addProtocolHandlerCustomizers(TomcatProtocolHandlerCustomizer<?>... tomcatProtocolHandlerCustomizers) {
-		Assert.notNull(tomcatProtocolHandlerCustomizers, "TomcatProtocolHandlerCustomizers must not be null");
+		Assert.notNull(tomcatProtocolHandlerCustomizers, "'tomcatProtocolHandlerCustomizers' must not be null");
 		this.tomcatProtocolHandlerCustomizers.addAll(Arrays.asList(tomcatProtocolHandlerCustomizers));
 	}
 
@@ -731,7 +740,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	 * @param connectors the connectors to add
 	 */
 	public void addAdditionalTomcatConnectors(Connector... connectors) {
-		Assert.notNull(connectors, "Connectors must not be null");
+		Assert.notNull(connectors, "'connectors' must not be null");
 		this.additionalTomcatConnectors.addAll(Arrays.asList(connectors));
 	}
 
@@ -773,6 +782,15 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 	}
 
 	/**
+	 * Whether to use APR.
+	 * @param useApr whether to use APR
+	 * @since 3.4.4
+	 */
+	public void setUseApr(boolean useApr) {
+		this.useApr = useApr;
+	}
+
+	/**
 	 * {@link LifecycleListener} to disable persistence in the {@link StandardManager}. A
 	 * {@link LifecycleListener} is used so not to interfere with Tomcat's default manager
 	 * creation logic.
@@ -806,7 +824,7 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 
 		@Override
 		public void lifecycleEvent(LifecycleEvent event) {
-			if (event.getType().equals(Lifecycle.CONFIGURE_START_EVENT)) {
+			if (event.getType().equals(Lifecycle.BEFORE_INIT_EVENT)) {
 				addResourceJars(getUrlsOfJarsWithMetaInfResources());
 			}
 		}
@@ -825,6 +843,9 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 				else {
 					addResourceSet(url.toString());
 				}
+			}
+			for (WebResourceSet resources : this.context.getResources().getJarResources()) {
+				resources.setReadOnly(true);
 			}
 		}
 
@@ -949,6 +970,16 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		}
 
 		@Override
+		public void setAllowLinking(boolean allowLinking) {
+			this.delegate.setAllowLinking(allowLinking);
+		}
+
+		@Override
+		public boolean getAllowLinking() {
+			return this.delegate.getAllowLinking();
+		}
+
+		@Override
 		protected void initInternal() throws LifecycleException {
 			if (this.delegate instanceof LifecycleBase) {
 				try {
@@ -977,11 +1008,12 @@ public class TomcatServletWebServerFactory extends AbstractServletWebServerFacto
 		@Override
 		public String generateHeader(Cookie cookie, HttpServletRequest request) {
 			SameSite sameSite = getSameSite(cookie);
-			if (sameSite == null) {
+			String sameSiteValue = (sameSite != null) ? sameSite.attributeValue() : null;
+			if (sameSiteValue == null) {
 				return super.generateHeader(cookie, request);
 			}
 			Rfc6265CookieProcessor delegate = new Rfc6265CookieProcessor();
-			delegate.setSameSiteCookies(sameSite.attributeValue());
+			delegate.setSameSiteCookies(sameSiteValue);
 			return delegate.generateHeader(cookie, request);
 		}
 

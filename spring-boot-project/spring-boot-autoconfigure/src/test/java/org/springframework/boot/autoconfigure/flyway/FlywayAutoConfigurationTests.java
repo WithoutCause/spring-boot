@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,11 @@
 
 package org.springframework.boot.autoconfigure.flyway;
 
+import java.io.Serializable;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Arrays;
@@ -25,6 +30,10 @@ import java.util.UUID;
 
 import javax.sql.DataSource;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.Location;
 import org.flywaydb.core.api.MigrationVersion;
@@ -33,9 +42,10 @@ import org.flywaydb.core.api.callback.Context;
 import org.flywaydb.core.api.callback.Event;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.flywaydb.core.api.migration.JavaMigration;
-import org.flywaydb.core.internal.database.postgresql.PostgreSQLConfigurationExtension;
-import org.flywaydb.core.internal.license.FlywayTeamsUpgradeRequiredException;
+import org.flywaydb.core.api.pattern.ValidatePattern;
+import org.flywaydb.core.internal.license.FlywayEditionUpgradeRequiredException;
 import org.flywaydb.database.oracle.OracleConfigurationExtension;
+import org.flywaydb.database.postgresql.PostgreSQLConfigurationExtension;
 import org.flywaydb.database.sqlserver.SQLServerConfigurationExtension;
 import org.hibernate.engine.transaction.jta.platform.internal.NoJtaPlatform;
 import org.jooq.DSLContext;
@@ -55,19 +65,23 @@ import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration.Fly
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration.OracleFlywayConfigurationCustomizer;
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration.PostgresqlFlywayConfigurationCustomizer;
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration.SqlServerFlywayConfigurationCustomizer;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.autoconfigure.jdbc.EmbeddedDataSourceConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.JdbcConnectionDetails;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.boot.jdbc.EmbeddedDatabaseConnection;
 import org.springframework.boot.jdbc.SchemaManagement;
 import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.ContextConsumer;
-import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.testsupport.classpath.resources.ResourcePath;
+import org.springframework.boot.testsupport.classpath.resources.WithResource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -318,7 +332,8 @@ class FlywayAutoConfigurationTests {
 			.run((context) -> {
 				FlywaySchemaManagementProvider schemaManagementProvider = context
 					.getBean(FlywaySchemaManagementProvider.class);
-				assertThat(schemaManagementProvider.getSchemaManagement(context.getBean(DataSource.class)))
+				assertThat(schemaManagementProvider
+					.getSchemaManagement(context.getBean("normalDataSource", DataSource.class)))
 					.isEqualTo(SchemaManagement.UNMANAGED);
 				assertThat(schemaManagementProvider
 					.getSchemaManagement(context.getBean("flywayDataSource", DataSource.class)))
@@ -410,7 +425,9 @@ class FlywayAutoConfigurationTests {
 	}
 
 	@Test
-	void failOnMissingLocationsAllExist() {
+	@WithResource(name = "db/changelog/V1.1__refine.sql")
+	@WithResource(name = "db/migration/V1__init.sql", content = "DROP TABLE IF EXISTS TEST")
+	void failOnMissingLocationsDoesNotFailWhenAllExist() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.fail-on-missing-locations=true")
 			.withPropertyValues("spring.flyway.locations:classpath:db/changelog,classpath:db/migration")
@@ -418,6 +435,8 @@ class FlywayAutoConfigurationTests {
 	}
 
 	@Test
+	@WithResource(name = "db/changelog/V1.1__refine.sql")
+	@WithResource(name = "db/migration/V1__init.sql", content = "DROP TABLE IF EXISTS TEST")
 	void failOnMissingLocationsAllExistWithImplicitClasspathPrefix() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.fail-on-missing-locations=true")
@@ -426,10 +445,11 @@ class FlywayAutoConfigurationTests {
 	}
 
 	@Test
-	void failOnMissingLocationsAllExistWithFilesystemPrefix() {
+	@WithResource(name = "db/migration/V1__init.sql", content = "DROP TABLE IF EXISTS TEST")
+	void failOnMissingLocationsFilesystemPrefixDoesNotFailWhenAllExist(@ResourcePath("db/migration") String migration) {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.fail-on-missing-locations=true")
-			.withPropertyValues("spring.flyway.locations:filesystem:src/test/resources/db/migration")
+			.withPropertyValues("spring.flyway.locations:filesystem:" + migration)
 			.run((context) -> assertThat(context).hasNotFailed());
 	}
 
@@ -465,10 +485,41 @@ class FlywayAutoConfigurationTests {
 	}
 
 	@Test
+	@WithMetaInfPersistenceXmlResource
 	void customFlywayWithJpa() {
 		this.contextRunner
 			.withUserConfiguration(EmbeddedDataSourceConfiguration.class, CustomFlywayWithJpaConfiguration.class)
 			.run((context) -> assertThat(context).hasNotFailed());
+	}
+
+	@Test
+	@WithMetaInfPersistenceXmlResource
+	void jpaApplyDdl() {
+		this.contextRunner
+			.withConfiguration(
+					AutoConfigurations.of(DataSourceAutoConfiguration.class, HibernateJpaAutoConfiguration.class))
+			.run((context) -> {
+				Map<String, Object> jpaProperties = context.getBean(LocalContainerEntityManagerFactoryBean.class)
+					.getJpaPropertyMap();
+				assertThat(jpaProperties).doesNotContainKey("hibernate.hbm2ddl.auto");
+			});
+	}
+
+	@Test
+	@WithMetaInfPersistenceXmlResource
+	void jpaAndMultipleDataSourcesApplyDdl() {
+		this.contextRunner.withConfiguration(AutoConfigurations.of(HibernateJpaAutoConfiguration.class))
+			.withUserConfiguration(JpaWithMultipleDataSourcesConfiguration.class)
+			.run((context) -> {
+				LocalContainerEntityManagerFactoryBean normalEntityManagerFactoryBean = context
+					.getBean("&normalEntityManagerFactory", LocalContainerEntityManagerFactoryBean.class);
+				assertThat(normalEntityManagerFactoryBean.getJpaPropertyMap()).containsEntry("configured", "normal")
+					.containsEntry("hibernate.hbm2ddl.auto", "create-drop");
+				LocalContainerEntityManagerFactoryBean flywayEntityManagerFactoryBean = context
+					.getBean("&flywayEntityManagerFactory", LocalContainerEntityManagerFactoryBean.class);
+				assertThat(flywayEntityManagerFactoryBean.getJpaPropertyMap()).containsEntry("configured", "flyway")
+					.doesNotContainKey("hibernate.hbm2ddl.auto");
+			});
 	}
 
 	@Test
@@ -479,6 +530,7 @@ class FlywayAutoConfigurationTests {
 	}
 
 	@Test
+	@WithMetaInfPersistenceXmlResource
 	void customFlywayMigrationInitializerWithJpa() {
 		this.contextRunner
 			.withUserConfiguration(EmbeddedDataSourceConfiguration.class,
@@ -517,6 +569,7 @@ class FlywayAutoConfigurationTests {
 	}
 
 	@Test
+	@WithResource(name = "db/vendors/h2/V1__init.sql", content = "DROP TABLE IF EXISTS TEST;")
 	void useVendorDirectory() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.locations=classpath:db/vendors/{vendor},classpath:db/changelog")
@@ -529,6 +582,7 @@ class FlywayAutoConfigurationTests {
 	}
 
 	@Test
+	@WithResource(name = "db/vendors/h2/V1__init.sql", content = "DROP TABLE IF EXISTS TEST;")
 	void useOneLocationWithVendorDirectory() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.locations=classpath:db/vendors/{vendor}")
@@ -584,7 +638,10 @@ class FlywayAutoConfigurationTests {
 	void batchIsCorrectlyMapped() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.batch=true")
-			.run(validateFlywayTeamsPropertyOnly("batch"));
+			.run((context) -> {
+				Flyway flyway = context.getBean(Flyway.class);
+				assertThat(flyway.getConfiguration().getModernConfig().getFlyway().getBatch()).isTrue();
+			});
 	}
 
 	@Test
@@ -599,14 +656,6 @@ class FlywayAutoConfigurationTests {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.errorOverrides=D12345")
 			.run(validateFlywayTeamsPropertyOnly("errorOverrides"));
-	}
-
-	@Test
-	void licenseKeyIsCorrectlyMapped(CapturedOutput output) {
-		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
-			.withPropertyValues("spring.flyway.license-key=<<secret>>")
-			.run((context) -> assertThat(output).contains("License key detected - in order to use Teams or "
-					+ "Enterprise features, download Flyway Teams Edition & Flyway Enterprise Edition"));
 	}
 
 	@Test
@@ -714,14 +763,10 @@ class FlywayAutoConfigurationTests {
 	void streamIsCorrectlyMapped() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.stream=true")
-			.run(validateFlywayTeamsPropertyOnly("stream"));
-	}
-
-	@Test
-	void undoSqlMigrationPrefix() {
-		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
-			.withPropertyValues("spring.flyway.undo-sql-migration-prefix=undo")
-			.run(validateFlywayTeamsPropertyOnly("undoSqlMigrationPrefix"));
+			.run((context) -> {
+				Flyway flyway = context.getBean(Flyway.class);
+				assertThat(flyway.getConfiguration().getModernConfig().getFlyway().getStream()).isTrue();
+			});
 	}
 
 	@Test
@@ -757,17 +802,16 @@ class FlywayAutoConfigurationTests {
 	}
 
 	@Test
-	void cherryPickIsCorrectlyMapped() {
-		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
-			.withPropertyValues("spring.flyway.cherry-pick=1.1")
-			.run(validateFlywayTeamsPropertyOnly("cherryPick"));
-	}
-
-	@Test
 	void jdbcPropertiesAreCorrectlyMapped() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.jdbc-properties.prop=value")
-			.run(validateFlywayTeamsPropertyOnly("jdbcProperties"));
+			.run((context) -> {
+				Flyway flyway = context.getBean(Flyway.class);
+				assertThat(flyway.getConfiguration()
+					.getCachedResolvedEnvironments()
+					.get(flyway.getConfiguration().getCurrentEnvironmentName())
+					.getJdbcProperties()).containsEntry("prop", "value");
+			});
 	}
 
 	@Test
@@ -781,7 +825,10 @@ class FlywayAutoConfigurationTests {
 	void outputQueryResultsIsCorrectlyMapped() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.output-query-results=false")
-			.run(validateFlywayTeamsPropertyOnly("outputQueryResults"));
+			.run((context) -> {
+				Flyway flyway = context.getBean(Flyway.class);
+				assertThat(flyway.getConfiguration().getModernConfig().getFlyway().getOutputQueryResults()).isFalse();
+			});
 	}
 
 	@Test
@@ -840,7 +887,11 @@ class FlywayAutoConfigurationTests {
 	void skipExecutingMigrationsIsCorrectlyMapped() {
 		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
 			.withPropertyValues("spring.flyway.skip-executing-migrations=true")
-			.run(validateFlywayTeamsPropertyOnly("skipExecutingMigrations"));
+			.run((context) -> {
+				Flyway flyway = context.getBean(Flyway.class);
+				assertThat(flyway.getConfiguration().getModernConfig().getFlyway().getSkipExecutingMigrations())
+					.isTrue();
+			});
 	}
 
 	@Test
@@ -919,26 +970,48 @@ class FlywayAutoConfigurationTests {
 		assertThat(RuntimeHintsPredicates.resource().forResource("db/migration/V1__init.sql")).accepts(runtimeHints);
 	}
 
+	@Test
+	void detectEncodingCorrectlyMapped() {
+		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
+			.withPropertyValues("spring.flyway.detect-encoding=true")
+			.run((context) -> assertThat(context.getBean(Flyway.class).getConfiguration().isDetectEncoding())
+				.isEqualTo(true));
+	}
+
+	@Test
+	void ignoreMigrationPatternsCorrectlyMapped() {
+		this.contextRunner.withUserConfiguration(EmbeddedDataSourceConfiguration.class)
+			.withPropertyValues("spring.flyway.ignore-migration-patterns=*:missing")
+			.run((context) -> assertThat(context.getBean(Flyway.class).getConfiguration().getIgnoreMigrationPatterns())
+				.containsExactly(ValidatePattern.fromPattern("*:missing")));
+	}
+
 	private ContextConsumer<AssertableApplicationContext> validateFlywayTeamsPropertyOnly(String propertyName) {
 		return (context) -> {
 			assertThat(context).hasFailed();
 			Throwable failure = context.getStartupFailure();
-			assertThat(failure).hasRootCauseInstanceOf(FlywayTeamsUpgradeRequiredException.class);
+			assertThat(failure).hasRootCauseInstanceOf(FlywayEditionUpgradeRequiredException.class);
 			assertThat(failure).hasMessageContaining(String.format(" %s ", propertyName));
 		};
+	}
+
+	private static Map<String, ?> configureJpaProperties() {
+		Map<String, Object> properties = new HashMap<>();
+		properties.put("configured", "manually");
+		properties.put("hibernate.transaction.jta.platform", NoJtaPlatform.INSTANCE);
+		return properties;
 	}
 
 	@Configuration(proxyBeanMethods = false)
 	static class FlywayDataSourceConfiguration {
 
 		@Bean
-		@Primary
 		DataSource normalDataSource() {
 			return DataSourceBuilder.create().url("jdbc:hsqldb:mem:normal").username("sa").build();
 		}
 
 		@FlywayDataSource
-		@Bean
+		@Bean(defaultCandidate = false)
 		DataSource flywayDataSource() {
 			return DataSourceBuilder.create().url("jdbc:hsqldb:mem:flywaytest").username("sa").build();
 		}
@@ -959,7 +1032,7 @@ class FlywayAutoConfigurationTests {
 		}
 
 		@FlywayDataSource
-		@Bean
+		@Bean(defaultCandidate = false)
 		DataSource flywayDataSource() {
 			return DataSourceBuilder.create().url("jdbc:hsqldb:mem:flywaytest").username("sa").build();
 		}
@@ -1024,10 +1097,8 @@ class FlywayAutoConfigurationTests {
 
 		@Bean
 		LocalContainerEntityManagerFactoryBean entityManagerFactoryBean(DataSource dataSource) {
-			Map<String, Object> properties = new HashMap<>();
-			properties.put("configured", "manually");
-			properties.put("hibernate.transaction.jta.platform", NoJtaPlatform.INSTANCE);
-			return new EntityManagerFactoryBuilder(new HibernateJpaVendorAdapter(), properties, null)
+			return new EntityManagerFactoryBuilder(new HibernateJpaVendorAdapter(), (ds) -> configureJpaProperties(),
+					null)
 				.dataSource(dataSource)
 				.build();
 		}
@@ -1050,12 +1121,50 @@ class FlywayAutoConfigurationTests {
 
 		@Bean
 		LocalContainerEntityManagerFactoryBean entityManagerFactoryBean() {
-			Map<String, Object> properties = new HashMap<>();
-			properties.put("configured", "manually");
-			properties.put("hibernate.transaction.jta.platform", NoJtaPlatform.INSTANCE);
-			return new EntityManagerFactoryBuilder(new HibernateJpaVendorAdapter(), properties, null)
+			return new EntityManagerFactoryBuilder(new HibernateJpaVendorAdapter(),
+					(datasource) -> configureJpaProperties(), null)
 				.dataSource(this.dataSource)
 				.build();
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class JpaWithMultipleDataSourcesConfiguration {
+
+		@Bean
+		@Primary
+		DataSource normalDataSource() {
+			return new EmbeddedDatabaseBuilder().setType(EmbeddedDatabaseConnection.HSQLDB.getType())
+				.generateUniqueName(true)
+				.build();
+		}
+
+		@Bean
+		@Primary
+		LocalContainerEntityManagerFactoryBean normalEntityManagerFactory(EntityManagerFactoryBuilder builder,
+				DataSource normalDataSource) {
+			Map<String, Object> properties = new HashMap<>();
+			properties.put("configured", "normal");
+			properties.put("hibernate.transaction.jta.platform", NoJtaPlatform.INSTANCE);
+			return builder.dataSource(normalDataSource).properties(properties).build();
+		}
+
+		@Bean
+		@FlywayDataSource
+		DataSource flywayDataSource() {
+			return new EmbeddedDatabaseBuilder().setType(EmbeddedDatabaseConnection.HSQLDB.getType())
+				.generateUniqueName(true)
+				.build();
+		}
+
+		@Bean
+		LocalContainerEntityManagerFactoryBean flywayEntityManagerFactory(EntityManagerFactoryBuilder builder,
+				@FlywayDataSource DataSource flywayDataSource) {
+			Map<String, Object> properties = new HashMap<>();
+			properties.put("configured", "flyway");
+			properties.put("hibernate.transaction.jta.platform", NoJtaPlatform.INSTANCE);
+			return builder.dataSource(flywayDataSource).properties(properties).build();
 		}
 
 	}
@@ -1115,7 +1224,7 @@ class FlywayAutoConfigurationTests {
 	@Component
 	static class MockFlywayMigrationStrategy implements FlywayMigrationStrategy {
 
-		private boolean called = false;
+		private boolean called;
 
 		@Override
 		public void migrate(Flyway flyway) {
@@ -1319,6 +1428,76 @@ class FlywayAutoConfigurationTests {
 				}
 
 			};
+		}
+
+	}
+
+	@Target(ElementType.METHOD)
+	@Retention(RetentionPolicy.RUNTIME)
+	@WithResource(name = "META-INF/persistence.xml",
+			content = """
+					<?xml version="1.0" encoding="UTF-8"?>
+					<persistence version="2.0" xmlns="http://java.sun.com/xml/ns/persistence" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://java.sun.com/xml/ns/persistence https://java.sun.com/xml/ns/persistence/persistence_2_0.xsd">
+						<persistence-unit name="manually-configured">
+							<class>org.springframework.boot.autoconfigure.flyway.FlywayAutoConfigurationTests$City</class>
+							<exclude-unlisted-classes>true</exclude-unlisted-classes>
+						</persistence-unit>
+					</persistence>
+					""")
+	@interface WithMetaInfPersistenceXmlResource {
+
+	}
+
+	@Entity
+	public static class City implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
+		@Id
+		@GeneratedValue
+		private Long id;
+
+		@Column(nullable = false)
+		private String name;
+
+		@Column(nullable = false)
+		private String state;
+
+		@Column(nullable = false)
+		private String country;
+
+		@Column(nullable = false)
+		private String map;
+
+		protected City() {
+		}
+
+		City(String name, String state, String country, String map) {
+			this.name = name;
+			this.state = state;
+			this.country = country;
+			this.map = map;
+		}
+
+		public String getName() {
+			return this.name;
+		}
+
+		public String getState() {
+			return this.state;
+		}
+
+		public String getCountry() {
+			return this.country;
+		}
+
+		public String getMap() {
+			return this.map;
+		}
+
+		@Override
+		public String toString() {
+			return getName() + "," + getState() + "," + getCountry();
 		}
 
 	}

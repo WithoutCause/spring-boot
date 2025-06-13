@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.boot.logging;
 
+import java.io.Console;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.function.BiConsumer;
@@ -43,117 +44,6 @@ import org.springframework.util.StringUtils;
  * @see LoggingSystemProperty
  */
 public class LoggingSystemProperties {
-
-	/**
-	 * The name of the System property that contains the process ID.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#PID}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String PID_KEY = LoggingSystemProperty.PID.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the exception conversion word.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#EXCEPTION_CONVERSION_WORD}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String EXCEPTION_CONVERSION_WORD = LoggingSystemProperty.EXCEPTION_CONVERSION_WORD
-		.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the log file.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#LOG_FILE}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String LOG_FILE = LoggingSystemProperty.LOG_FILE.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the log path.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#LOG_PATH}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String LOG_PATH = LoggingSystemProperty.LOG_PATH.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the console log pattern.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#CONSOLE_PATTERN}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String CONSOLE_LOG_PATTERN = LoggingSystemProperty.CONSOLE_PATTERN.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the console log charset.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#CONSOLE_CHARSET}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String CONSOLE_LOG_CHARSET = LoggingSystemProperty.CONSOLE_CHARSET.getEnvironmentVariableName();
-
-	/**
-	 * The log level threshold for console log.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#CONSOLE_THRESHOLD}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String CONSOLE_LOG_THRESHOLD = LoggingSystemProperty.CONSOLE_THRESHOLD
-		.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the file log pattern.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#FILE_PATTERN}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String FILE_LOG_PATTERN = LoggingSystemProperty.FILE_PATTERN.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the file log charset.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#FILE_CHARSET}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String FILE_LOG_CHARSET = LoggingSystemProperty.FILE_CHARSET.getEnvironmentVariableName();
-
-	/**
-	 * The log level threshold for file log.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#FILE_THRESHOLD}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String FILE_LOG_THRESHOLD = LoggingSystemProperty.FILE_THRESHOLD.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the log level pattern.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#LEVEL_PATTERN}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String LOG_LEVEL_PATTERN = LoggingSystemProperty.LEVEL_PATTERN.getEnvironmentVariableName();
-
-	/**
-	 * The name of the System property that contains the log date-format pattern.
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of calling
-	 * {@link LoggingSystemProperty#getEnvironmentVariableName()} on
-	 * {@link LoggingSystemProperty#DATEFORMAT_PATTERN}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public static final String LOG_DATEFORMAT_PATTERN = LoggingSystemProperty.DATEFORMAT_PATTERN
-		.getEnvironmentVariableName();
 
 	private static final BiConsumer<String, String> systemPropertySetter = (name, value) -> {
 		if (System.getProperty(name) == null && value != null) {
@@ -196,14 +86,19 @@ public class LoggingSystemProperties {
 	 */
 	public LoggingSystemProperties(Environment environment, Function<String, String> defaultValueResolver,
 			BiConsumer<String, String> setter) {
-		Assert.notNull(environment, "Environment must not be null");
+		Assert.notNull(environment, "'environment' must not be null");
 		this.environment = environment;
 		this.defaultValueResolver = (defaultValueResolver != null) ? defaultValueResolver : (name) -> null;
 		this.setter = (setter != null) ? setter : systemPropertySetter;
 	}
 
-	protected Charset getDefaultCharset() {
-		return StandardCharsets.UTF_8;
+	/**
+	 * Returns the {@link Console} to use.
+	 * @return the {@link Console} to use
+	 * @since 3.5.0
+	 */
+	protected Console getConsole() {
+		return System.console();
 	}
 
 	public final void apply() {
@@ -219,7 +114,7 @@ public class LoggingSystemProperties {
 		if (this.environment instanceof ConfigurableEnvironment configurableEnvironment) {
 			PropertySourcesPropertyResolver resolver = new PropertySourcesPropertyResolver(
 					configurableEnvironment.getPropertySources());
-			resolver.setConversionService(((ConfigurableEnvironment) this.environment).getConversionService());
+			resolver.setConversionService(configurableEnvironment.getConversionService());
 			resolver.setIgnoreUnresolvableNestedPlaceholders(true);
 			return resolver;
 		}
@@ -227,16 +122,21 @@ public class LoggingSystemProperties {
 	}
 
 	protected void apply(LogFile logFile, PropertyResolver resolver) {
-		String defaultCharsetName = getDefaultCharset().name();
-		setApplicationNameSystemProperty(resolver);
+		Charset defaultCharset = getDefaultCharset();
+		Charset consoleCharset = (defaultCharset != null) ? defaultCharset : getDefaultConsoleCharset();
+		Charset fileCharset = (defaultCharset != null) ? defaultCharset : getDefaultFileCharset();
+		setSystemProperty(LoggingSystemProperty.APPLICATION_NAME, resolver);
+		setSystemProperty(LoggingSystemProperty.APPLICATION_GROUP, resolver);
 		setSystemProperty(LoggingSystemProperty.PID, new ApplicationPid().toString());
-		setSystemProperty(LoggingSystemProperty.CONSOLE_CHARSET, resolver, defaultCharsetName);
-		setSystemProperty(LoggingSystemProperty.FILE_CHARSET, resolver, defaultCharsetName);
-		setSystemProperty(LoggingSystemProperty.CONSOLE_THRESHOLD, resolver);
-		setSystemProperty(LoggingSystemProperty.FILE_THRESHOLD, resolver);
+		setSystemProperty(LoggingSystemProperty.CONSOLE_CHARSET, resolver, consoleCharset.name());
+		setSystemProperty(LoggingSystemProperty.FILE_CHARSET, resolver, fileCharset.name());
+		setSystemProperty(LoggingSystemProperty.CONSOLE_THRESHOLD, resolver, this::thresholdMapper);
+		setSystemProperty(LoggingSystemProperty.FILE_THRESHOLD, resolver, this::thresholdMapper);
 		setSystemProperty(LoggingSystemProperty.EXCEPTION_CONVERSION_WORD, resolver);
 		setSystemProperty(LoggingSystemProperty.CONSOLE_PATTERN, resolver);
 		setSystemProperty(LoggingSystemProperty.FILE_PATTERN, resolver);
+		setSystemProperty(LoggingSystemProperty.CONSOLE_STRUCTURED_FORMAT, resolver);
+		setSystemProperty(LoggingSystemProperty.FILE_STRUCTURED_FORMAT, resolver);
 		setSystemProperty(LoggingSystemProperty.LEVEL_PATTERN, resolver);
 		setSystemProperty(LoggingSystemProperty.DATEFORMAT_PATTERN, resolver);
 		setSystemProperty(LoggingSystemProperty.CORRELATION_PATTERN, resolver);
@@ -245,59 +145,78 @@ public class LoggingSystemProperties {
 		}
 	}
 
-	private void setApplicationNameSystemProperty(PropertyResolver resolver) {
-		if (resolver.getProperty("logging.include-application-name", Boolean.class, Boolean.TRUE)) {
-			String applicationName = resolver.getProperty("spring.application.name");
-			if (StringUtils.hasText(applicationName)) {
-				setSystemProperty(LoggingSystemProperty.APPLICATION_NAME.getEnvironmentVariableName(),
-						"[%s] ".formatted(applicationName));
-			}
-		}
+	/**
+	 * Returns the default charset.
+	 * @return the default charset
+	 * @deprecated since 3.5.0 for removal in 4.0.0 in favor of
+	 * {@link #getDefaultConsoleCharset()} and {@link #getDefaultFileCharset()}.
+	 */
+	@Deprecated(since = "3.5.0", forRemoval = true)
+	protected Charset getDefaultCharset() {
+		return null;
+	}
+
+	/**
+	 * Returns the default console charset.
+	 * @return the default console charset
+	 * @since 3.5.0
+	 */
+	protected Charset getDefaultConsoleCharset() {
+		Console console = getConsole();
+		return (console != null) ? console.charset() : Charset.defaultCharset();
+	}
+
+	/**
+	 * Returns the default file charset.
+	 * @return the default file charset
+	 * @since 3.5.0
+	 */
+	protected Charset getDefaultFileCharset() {
+		return StandardCharsets.UTF_8;
 	}
 
 	private void setSystemProperty(LoggingSystemProperty property, PropertyResolver resolver) {
-		setSystemProperty(property, resolver, null);
+		setSystemProperty(property, resolver, Function.identity());
+	}
+
+	private void setSystemProperty(LoggingSystemProperty property, PropertyResolver resolver,
+			Function<String, String> mapper) {
+		setSystemProperty(property, resolver, null, mapper);
 	}
 
 	private void setSystemProperty(LoggingSystemProperty property, PropertyResolver resolver, String defaultValue) {
+		setSystemProperty(property, resolver, defaultValue, Function.identity());
+	}
+
+	private void setSystemProperty(LoggingSystemProperty property, PropertyResolver resolver, String defaultValue,
+			Function<String, String> mapper) {
+		if (property.getIncludePropertyName() != null) {
+			if (!resolver.getProperty(property.getIncludePropertyName(), Boolean.class, Boolean.TRUE)) {
+				return;
+			}
+		}
 		String value = (property.getApplicationPropertyName() != null)
 				? resolver.getProperty(property.getApplicationPropertyName()) : null;
 		value = (value != null) ? value : this.defaultValueResolver.apply(property.getApplicationPropertyName());
 		value = (value != null) ? value : defaultValue;
+		value = mapper.apply(value);
 		setSystemProperty(property.getEnvironmentVariableName(), value);
+		if (property == LoggingSystemProperty.APPLICATION_NAME && StringUtils.hasText(value)) {
+			// LOGGED_APPLICATION_NAME is deprecated for removal in 4.0.0
+			setSystemProperty("LOGGED_APPLICATION_NAME", "[%s] ".formatted(value));
+		}
 	}
 
 	private void setSystemProperty(LoggingSystemProperty property, String value) {
 		setSystemProperty(property.getEnvironmentVariableName(), value);
 	}
 
-	/**
-	 * Set a system property.
-	 * @param resolver the resolver used to get the property value
-	 * @param systemPropertyName the system property name
-	 * @param propertyName the application property name
-	 * @deprecated since 3.2.0 for removal in 3.4.0 with no replacement
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	protected final void setSystemProperty(PropertyResolver resolver, String systemPropertyName, String propertyName) {
-		setSystemProperty(resolver, systemPropertyName, propertyName, null);
-	}
-
-	/**
-	 * Set a system property.
-	 * @param resolver the resolver used to get the property value
-	 * @param systemPropertyName the system property name
-	 * @param propertyName the application property name
-	 * @param defaultValue the default value if none can be resolved
-	 * @deprecated since 3.2.0 for removal in 3.4.0 with no replacement
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	protected final void setSystemProperty(PropertyResolver resolver, String systemPropertyName, String propertyName,
-			String defaultValue) {
-		String value = resolver.getProperty(propertyName);
-		value = (value != null) ? value : this.defaultValueResolver.apply(systemPropertyName);
-		value = (value != null) ? value : defaultValue;
-		setSystemProperty(systemPropertyName, value);
+	private String thresholdMapper(String input) {
+		// YAML converts an unquoted OFF to false
+		if ("false".equals(input)) {
+			return "OFF";
+		}
+		return input;
 	}
 
 	/**

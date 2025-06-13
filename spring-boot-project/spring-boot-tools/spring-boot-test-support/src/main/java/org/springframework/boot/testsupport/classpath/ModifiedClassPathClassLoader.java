@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -88,8 +88,8 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 
 	@Override
 	public Class<?> loadClass(String name) throws ClassNotFoundException {
-		if (name.startsWith("org.junit") || name.startsWith("org.hamcrest")
-				|| name.startsWith("io.netty.internal.tcnative")) {
+		if (name.startsWith("org.junit.") || name.startsWith("org.hamcrest.")
+				|| name.startsWith("io.netty.internal.tcnative.")) {
 			return Class.forName(name, false, this.junitLoader);
 		}
 		String packageName = ClassUtils.getPackageName(name);
@@ -99,6 +99,7 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 		return super.loadClass(name);
 	}
 
+	@SuppressWarnings("resource")
 	static ModifiedClassPathClassLoader get(Class<?> testClass, Method testMethod, List<Object> arguments) {
 		Set<AnnotatedElement> candidates = new LinkedHashSet<>();
 		candidates.add(testClass);
@@ -116,8 +117,8 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 	private static Collection<AnnotatedElement> getAnnotatedElements(Object[] array) {
 		Set<AnnotatedElement> result = new LinkedHashSet<>();
 		for (Object item : array) {
-			if (item instanceof AnnotatedElement) {
-				result.add((AnnotatedElement) item);
+			if (item instanceof AnnotatedElement annotatedElement) {
+				result.add(annotatedElement);
 			}
 			else if (ObjectUtils.isArray(item)) {
 				result.addAll(getAnnotatedElements(ObjectUtils.toObjectArray(item)));
@@ -186,6 +187,7 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 				return createdBy != null && createdBy.contains("IntelliJ");
 			}
 			catch (Exception ex) {
+				// Ignore
 			}
 		}
 		return false;
@@ -330,6 +332,7 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 					}
 				}
 				catch (URISyntaxException ex) {
+					// Ignore
 				}
 			}
 			return false;

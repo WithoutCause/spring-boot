@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@ package org.springframework.boot.diagnostics.analyzer;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.BeanCreationException;
+import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.analyzer.nounique.TestBean;
 import org.springframework.boot.diagnostics.analyzer.nounique.TestBeanConsumer;
+import org.springframework.boot.testsupport.classpath.resources.WithResource;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -38,6 +40,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Andy Wilkinson
  * @author Scott Frederick
  */
+@WithResource(name = "producer.xml",
+		content = """
+				<?xml version="1.0" encoding="UTF-8"?>
+				<beans xmlns="http://www.springframework.org/schema/beans"
+					xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+					xsi:schemaLocation="http://www.springframework.org/schema/beans https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+					<bean class="org.springframework.boot.diagnostics.analyzer.nounique.TestBean" name="xmlTestBean"/>
+
+				</beans>
+				""")
 class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	private final AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
@@ -78,6 +91,17 @@ class NoUniqueBeanDefinitionFailureAnalyzerTests {
 	}
 
 	@Test
+	@WithResource(name = "consumer.xml",
+			content = """
+					<?xml version="1.0" encoding="UTF-8"?>
+					<beans xmlns="http://www.springframework.org/schema/beans"
+						xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+						xsi:schemaLocation="http://www.springframework.org/schema/beans https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+						<bean class="org.springframework.boot.diagnostics.analyzer.nounique.TestBeanConsumer"/>
+
+					</beans>
+					""")
 	void failureAnalysisForXmlConsumer() {
 		FailureAnalysis failureAnalysis = analyzeFailure(createFailure(XmlConsumer.class));
 		assertThat(failureAnalysis.getDescription()).startsWith("Parameter 0 of constructor in "
@@ -101,6 +125,21 @@ class NoUniqueBeanDefinitionFailureAnalyzerTests {
 		assertFoundBeans(failureAnalysis);
 	}
 
+	@Test
+	void failureAnalysisWithoutInjectionPoints() {
+		this.context.registerBean("beanOne", TestBean.class);
+		this.context.register(DuplicateBeansProducer.class);
+		this.context.refresh();
+		FailureAnalysis failureAnalysis = analyzeFailure(new NoUniqueBeanDefinitionException(TestBean.class, 3,
+				"no TestBeanProvider specified and expected single matching TestBean but found 3: beanOne,beanTwo,xmlBean"));
+		assertThat(failureAnalysis.getDescription())
+			.startsWith("A component required a single bean, but 3 were found:");
+		assertThat(failureAnalysis.getDescription()).contains("beanOne: defined in unknown location");
+		assertThat(failureAnalysis.getDescription())
+			.contains("beanTwo: defined by method 'beanTwo' in " + DuplicateBeansProducer.class.getName());
+		assertThat(failureAnalysis.getDescription()).contains("xmlBean: a programmatically registered singleton");
+	}
+
 	private BeanCreationException createFailure(Class<?> consumer) {
 		this.context.registerBean("beanOne", TestBean.class);
 		this.context.register(DuplicateBeansProducer.class, consumer);
@@ -114,7 +153,7 @@ class NoUniqueBeanDefinitionFailureAnalyzerTests {
 		return null;
 	}
 
-	private FailureAnalysis analyzeFailure(BeanCreationException failure) {
+	private FailureAnalysis analyzeFailure(Exception failure) {
 		return this.analyzer.analyze(failure);
 	}
 
@@ -131,7 +170,7 @@ class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	@Configuration(proxyBeanMethods = false)
 	@ComponentScan(basePackageClasses = TestBean.class)
-	@ImportResource("/org/springframework/boot/diagnostics/analyzer/nounique/producer.xml")
+	@ImportResource("classpath:producer.xml")
 	static class DuplicateBeansProducer {
 
 		@Bean
@@ -200,7 +239,7 @@ class NoUniqueBeanDefinitionFailureAnalyzerTests {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	@ImportResource("/org/springframework/boot/diagnostics/analyzer/nounique/consumer.xml")
+	@ImportResource("classpath:consumer.xml")
 	static class XmlConsumer {
 
 	}

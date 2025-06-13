@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,11 @@ public class TaskExecutionProperties {
 	private final Shutdown shutdown = new Shutdown();
 
 	/**
+	 * Determine when the task executor is to be created.
+	 */
+	private Mode mode = Mode.AUTO;
+
+	/**
 	 * Prefix to use for the names of newly created threads.
 	 */
 	private String threadNamePrefix = "task-";
@@ -54,6 +59,14 @@ public class TaskExecutionProperties {
 		return this.shutdown;
 	}
 
+	public Mode getMode() {
+		return this.mode;
+	}
+
+	public void setMode(Mode mode) {
+		this.mode = mode;
+	}
+
 	public String getThreadNamePrefix() {
 		return this.threadNamePrefix;
 	}
@@ -65,10 +78,23 @@ public class TaskExecutionProperties {
 	public static class Simple {
 
 		/**
+		 * Whether to reject tasks when the concurrency limit has been reached.
+		 */
+		private boolean rejectTasksWhenLimitReached;
+
+		/**
 		 * Set the maximum number of parallel accesses allowed. -1 indicates no
 		 * concurrency limit at all.
 		 */
 		private Integer concurrencyLimit;
+
+		public boolean isRejectTasksWhenLimitReached() {
+			return this.rejectTasksWhenLimitReached;
+		}
+
+		public void setRejectTasksWhenLimitReached(boolean rejectTasksWhenLimitReached) {
+			this.rejectTasksWhenLimitReached = rejectTasksWhenLimitReached;
+		}
 
 		public Integer getConcurrencyLimit() {
 			return this.concurrencyLimit;
@@ -84,30 +110,32 @@ public class TaskExecutionProperties {
 
 		/**
 		 * Queue capacity. An unbounded capacity does not increase the pool and therefore
-		 * ignores the "max-size" property.
+		 * ignores the "max-size" property. Doesn't have an effect if virtual threads are
+		 * enabled.
 		 */
 		private int queueCapacity = Integer.MAX_VALUE;
 
 		/**
-		 * Core number of threads.
+		 * Core number of threads. Doesn't have an effect if virtual threads are enabled.
 		 */
 		private int coreSize = 8;
 
 		/**
 		 * Maximum allowed number of threads. If tasks are filling up the queue, the pool
 		 * can expand up to that size to accommodate the load. Ignored if the queue is
-		 * unbounded.
+		 * unbounded. Doesn't have an effect if virtual threads are enabled.
 		 */
 		private int maxSize = Integer.MAX_VALUE;
 
 		/**
 		 * Whether core threads are allowed to time out. This enables dynamic growing and
-		 * shrinking of the pool.
+		 * shrinking of the pool. Doesn't have an effect if virtual threads are enabled.
 		 */
 		private boolean allowCoreThreadTimeout = true;
 
 		/**
-		 * Time limit for which threads may remain idle before being terminated.
+		 * Time limit for which threads may remain idle before being terminated. Doesn't
+		 * have an effect if virtual threads are enabled.
 		 */
 		private Duration keepAlive = Duration.ofSeconds(60);
 
@@ -204,6 +232,25 @@ public class TaskExecutionProperties {
 		public void setAwaitTerminationPeriod(Duration awaitTerminationPeriod) {
 			this.awaitTerminationPeriod = awaitTerminationPeriod;
 		}
+
+	}
+
+	/**
+	 * Determine when the task executor is to be created.
+	 *
+	 * @since 3.5.0
+	 */
+	public enum Mode {
+
+		/**
+		 * Create the task executor if no user-defined executor is present.
+		 */
+		AUTO,
+
+		/**
+		 * Create the task executor even if a user-defined executor is present.
+		 */
+		FORCE
 
 	}
 

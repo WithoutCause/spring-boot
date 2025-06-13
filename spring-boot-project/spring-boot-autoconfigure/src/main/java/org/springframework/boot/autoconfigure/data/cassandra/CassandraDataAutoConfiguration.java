@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.domain.EntityScanPackages;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 import org.springframework.data.cassandra.CassandraManagedTypes;
 import org.springframework.data.cassandra.SessionFactory;
@@ -44,6 +45,8 @@ import org.springframework.data.cassandra.core.CassandraTemplate;
 import org.springframework.data.cassandra.core.convert.CassandraConverter;
 import org.springframework.data.cassandra.core.convert.CassandraCustomConversions;
 import org.springframework.data.cassandra.core.convert.MappingCassandraConverter;
+import org.springframework.data.cassandra.core.cql.CqlOperations;
+import org.springframework.data.cassandra.core.cql.CqlTemplate;
 import org.springframework.data.cassandra.core.mapping.CassandraMappingContext;
 import org.springframework.data.cassandra.core.mapping.SimpleUserTypeResolver;
 
@@ -54,6 +57,7 @@ import org.springframework.data.cassandra.core.mapping.SimpleUserTypeResolver;
  * @author Eddú Meléndez
  * @author Mark Paluch
  * @author Madhura Bhave
+ * @author Christoph Strobl
  * @since 1.3.0
  */
 @AutoConfiguration(after = CassandraAutoConfiguration.class)
@@ -63,7 +67,7 @@ public class CassandraDataAutoConfiguration {
 
 	private final CqlSession session;
 
-	public CassandraDataAutoConfiguration(CqlSession session) {
+	public CassandraDataAutoConfiguration(@Lazy CqlSession session) {
 		this.session = session;
 	}
 
@@ -95,7 +99,7 @@ public class CassandraDataAutoConfiguration {
 	public CassandraConverter cassandraConverter(CassandraMappingContext mapping,
 			CassandraCustomConversions conversions) {
 		MappingCassandraConverter converter = new MappingCassandraConverter(mapping);
-		converter.setCodecRegistry(this.session.getContext().getCodecRegistry());
+		converter.setCodecRegistry(() -> this.session.getContext().getCodecRegistry());
 		converter.setCustomConversions(conversions);
 		converter.setUserTypeResolver(new SimpleUserTypeResolver(this.session));
 		return converter;
@@ -113,9 +117,15 @@ public class CassandraDataAutoConfiguration {
 	}
 
 	@Bean
+	@ConditionalOnMissingBean(CqlOperations.class)
+	public CqlTemplate cqlTemplate(SessionFactory sessionFactory) {
+		return new CqlTemplate(sessionFactory);
+	}
+
+	@Bean
 	@ConditionalOnMissingBean(CassandraOperations.class)
-	public CassandraTemplate cassandraTemplate(SessionFactory sessionFactory, CassandraConverter converter) {
-		return new CassandraTemplate(sessionFactory, converter);
+	public CassandraTemplate cassandraTemplate(CqlTemplate cqlTemplate, CassandraConverter converter) {
+		return new CassandraTemplate(cqlTemplate, converter);
 	}
 
 	@Bean

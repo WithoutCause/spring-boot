@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,9 +30,10 @@ import org.springframework.test.web.client.RequestExpectationManager;
 import org.springframework.test.web.client.SimpleRequestExpectationManager;
 import org.springframework.util.Assert;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClient.Builder;
 
 /**
- * {@link RestClientCustomizer} that can be applied to {@link RestClient.Builder}
+ * {@link RestClientCustomizer} that can be applied to {@link Builder RestClient.Builder}
  * instances to add {@link MockRestServiceServer} support.
  * <p>
  * Typically applied to an existing builder before it is used, for example:
@@ -49,6 +50,10 @@ import org.springframework.web.client.RestClient;
  * obtain the mock server. If the customizer has been used more than once the
  * {@link #getServer(RestClient.Builder)} or {@link #getServers()} method must be used to
  * access the related server.
+ * <p>
+ * If a mock server is used in more than one test case in a test class, it might be
+ * necessary to reset the expectations on the server between tests using
+ * {@code getServer().reset()} or {@code getServer(restClientBuilder).reset()}.
  *
  * @author Scott Frederick
  * @since 3.2.0
@@ -63,29 +68,29 @@ public class MockServerRestClientCustomizer implements RestClientCustomizer {
 
 	private final Supplier<? extends RequestExpectationManager> expectationManagerSupplier;
 
-	private boolean bufferContent = false;
+	private boolean bufferContent;
 
 	public MockServerRestClientCustomizer() {
 		this(SimpleRequestExpectationManager::new);
 	}
 
 	/**
-	 * Crate a new {@link MockServerRestClientCustomizer} instance.
+	 * Create a new {@link MockServerRestClientCustomizer} instance.
 	 * @param expectationManager the expectation manager class to use
 	 */
 	public MockServerRestClientCustomizer(Class<? extends RequestExpectationManager> expectationManager) {
 		this(() -> BeanUtils.instantiateClass(expectationManager));
-		Assert.notNull(expectationManager, "ExpectationManager must not be null");
+		Assert.notNull(expectationManager, "'expectationManager' must not be null");
 	}
 
 	/**
-	 * Crate a new {@link MockServerRestClientCustomizer} instance.
+	 * Create a new {@link MockServerRestClientCustomizer} instance.
 	 * @param expectationManagerSupplier a supplier that provides the
 	 * {@link RequestExpectationManager} to use
 	 * @since 3.0.0
 	 */
 	public MockServerRestClientCustomizer(Supplier<? extends RequestExpectationManager> expectationManagerSupplier) {
-		Assert.notNull(expectationManagerSupplier, "ExpectationManagerSupplier must not be null");
+		Assert.notNull(expectationManagerSupplier, "'expectationManagerSupplier' must not be null");
 		this.expectationManagerSupplier = expectationManagerSupplier;
 	}
 

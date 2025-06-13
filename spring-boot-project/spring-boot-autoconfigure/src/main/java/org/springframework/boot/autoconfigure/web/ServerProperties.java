@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import org.springframework.boot.convert.DurationUnit;
 import org.springframework.boot.web.server.Compression;
 import org.springframework.boot.web.server.Cookie;
 import org.springframework.boot.web.server.Http2;
+import org.springframework.boot.web.server.MimeMappings;
 import org.springframework.boot.web.server.Shutdown;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.servlet.server.Encoding;
@@ -71,9 +72,10 @@ import org.springframework.util.unit.DataSize;
  * @author Parviz Rozikov
  * @author Florian Storz
  * @author Michael Weidmann
+ * @author Lasse Wulff
  * @since 1.0.0
  */
-@ConfigurationProperties(prefix = "server", ignoreUnknownFields = true)
+@ConfigurationProperties("server")
 public class ServerProperties {
 
 	/**
@@ -100,20 +102,29 @@ public class ServerProperties {
 	private String serverHeader;
 
 	/**
-	 * Maximum size of the HTTP request header.
+	 * Maximum size of the HTTP request header. Refer to the documentation for your chosen
+	 * embedded server for details of exactly how this limit is applied. For example,
+	 * Netty applies the limit separately to each individual header in the request whereas
+	 * Tomcat applies the limit to the combined size of the request line and all of the
+	 * header names and values in the request.
 	 */
 	private DataSize maxHttpRequestHeaderSize = DataSize.ofKilobytes(8);
 
 	/**
 	 * Type of shutdown that the server will support.
 	 */
-	private Shutdown shutdown = Shutdown.IMMEDIATE;
+	private Shutdown shutdown = Shutdown.GRACEFUL;
 
 	@NestedConfigurationProperty
 	private Ssl ssl;
 
 	@NestedConfigurationProperty
 	private final Compression compression = new Compression();
+
+	/**
+	 * Custom MIME mappings in addition to the default MIME mappings.
+	 */
+	private final MimeMappings mimeMappings = new MimeMappings();
 
 	@NestedConfigurationProperty
 	private final Http2 http2 = new Http2();
@@ -184,6 +195,14 @@ public class ServerProperties {
 
 	public Compression getCompression() {
 		return this.compression;
+	}
+
+	public MimeMappings getMimeMappings() {
+		return this.mimeMappings;
+	}
+
+	public void setMimeMappings(Map<String, String> customMappings) {
+		customMappings.forEach(this.mimeMappings::add);
 	}
 
 	public Http2 getHttp2() {
@@ -330,7 +349,7 @@ public class ServerProperties {
 			private Duration timeout = Duration.ofMinutes(30);
 
 			/**
-			 * The maximum number of sessions that can be stored.
+			 * Maximum number of sessions that can be stored.
 			 */
 			private int maxSessions = 10000;
 
@@ -450,21 +469,21 @@ public class ServerProperties {
 		private int maxKeepAliveRequests = 100;
 
 		/**
-		 * Comma-separated list of additional patterns that match jars to ignore for TLD
-		 * scanning. The special '?' and '*' characters can be used in the pattern to
-		 * match one and only one character and zero or more characters respectively.
+		 * List of additional patterns that match jars to ignore for TLD scanning. The
+		 * special '?' and '*' characters can be used in the pattern to match one and only
+		 * one character and zero or more characters respectively.
 		 */
 		private List<String> additionalTldSkipPatterns = new ArrayList<>();
 
 		/**
-		 * Comma-separated list of additional unencoded characters that should be allowed
-		 * in URI paths. Only "< > [ \ ] ^ ` { | }" are allowed.
+		 * List of additional unencoded characters that should be allowed in URI paths.
+		 * Only "< > [ \ ] ^ ` { | }" are allowed.
 		 */
 		private List<Character> relaxedPathChars = new ArrayList<>();
 
 		/**
-		 * Comma-separated list of additional unencoded characters that should be allowed
-		 * in URI query strings. Only "< > [ \ ] ^ ` { | }" are allowed.
+		 * List of additional unencoded characters that should be allowed in URI query
+		 * strings. Only "< > [ \ ] ^ ` { | }" are allowed.
 		 */
 		private List<Character> relaxedQueryChars = new ArrayList<>();
 
@@ -473,12 +492,6 @@ public class ServerProperties {
 		 * request URI line to be presented.
 		 */
 		private Duration connectionTimeout;
-
-		/**
-		 * Whether to reject requests with illegal header names or values.
-		 */
-		@Deprecated(since = "2.7.12", forRemoval = true) // Remove in 3.3
-		private boolean rejectIllegalHeader = true;
 
 		/**
 		 * Static resource configuration.
@@ -500,13 +513,16 @@ public class ServerProperties {
 		 */
 		private DataSize maxHttpResponseHeaderSize = DataSize.ofKilobytes(8);
 
-		public DataSize getMaxHttpFormPostSize() {
-			return this.maxHttpFormPostSize;
-		}
+		/**
+		 * Maximum number of parameters (GET plus POST) that will be automatically parsed
+		 * by the container. A value of less than 0 means no limit.
+		 */
+		private int maxParameterCount = 10000;
 
-		public void setMaxHttpFormPostSize(DataSize maxHttpFormPostSize) {
-			this.maxHttpFormPostSize = maxHttpFormPostSize;
-		}
+		/**
+		 * Whether to use APR.
+		 */
+		private UseApr useApr = UseApr.NEVER;
 
 		public Accesslog getAccesslog() {
 			return this.accesslog;
@@ -636,17 +652,6 @@ public class ServerProperties {
 			this.connectionTimeout = connectionTimeout;
 		}
 
-		@Deprecated(since = "3.2.0", forRemoval = true)
-		@DeprecatedConfigurationProperty(reason = "The setting has been deprecated in Tomcat", since = "3.2.0")
-		public boolean isRejectIllegalHeader() {
-			return this.rejectIllegalHeader;
-		}
-
-		@Deprecated(since = "3.2.0", forRemoval = true)
-		public void setRejectIllegalHeader(boolean rejectIllegalHeader) {
-			this.rejectIllegalHeader = rejectIllegalHeader;
-		}
-
 		public Resource getResource() {
 			return this.resource;
 		}
@@ -665,6 +670,30 @@ public class ServerProperties {
 
 		public void setMaxHttpResponseHeaderSize(DataSize maxHttpResponseHeaderSize) {
 			this.maxHttpResponseHeaderSize = maxHttpResponseHeaderSize;
+		}
+
+		public DataSize getMaxHttpFormPostSize() {
+			return this.maxHttpFormPostSize;
+		}
+
+		public void setMaxHttpFormPostSize(DataSize maxHttpFormPostSize) {
+			this.maxHttpFormPostSize = maxHttpFormPostSize;
+		}
+
+		public int getMaxParameterCount() {
+			return this.maxParameterCount;
+		}
+
+		public void setMaxParameterCount(int maxParameterCount) {
+			this.maxParameterCount = maxParameterCount;
+		}
+
+		public UseApr getUseApr() {
+			return this.useApr;
+		}
+
+		public void setUseApr(UseApr useApr) {
+			this.useApr = useApr;
 		}
 
 		/**
@@ -909,17 +938,20 @@ public class ServerProperties {
 		public static class Threads {
 
 			/**
-			 * Maximum amount of worker threads.
+			 * Maximum amount of worker threads. Doesn't have an effect if virtual threads
+			 * are enabled.
 			 */
 			private int max = 200;
 
 			/**
-			 * Minimum amount of worker threads.
+			 * Minimum amount of worker threads. Doesn't have an effect if virtual threads
+			 * are enabled.
 			 */
 			private int minSpare = 10;
 
 			/**
-			 * Maximum capacity of the thread pool's backing queue.
+			 * Maximum capacity of the thread pool's backing queue. This setting only has
+			 * an effect if the value is greater than 0.
 			 */
 			private int maxQueueCapacity = 2147483647;
 
@@ -1015,7 +1047,10 @@ public class ServerProperties {
 					+ "172\\.1[6-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 172.16/12
 					+ "172\\.2[0-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 172.16/12
 					+ "172\\.3[0-1]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 172.16/12
-					+ "0:0:0:0:0:0:0:1|::1";
+					+ "0:0:0:0:0:0:0:1|" // 0:0:0:0:0:0:0:1
+					+ "::1|" // ::1
+					+ "fe[89ab]\\p{XDigit}:.*|" //
+					+ "f[cd]\\p{XDigit}{2}+:.*";
 
 			/**
 			 * Header that holds the incoming protocol, usually named "X-Forwarded-Proto".
@@ -1108,6 +1143,28 @@ public class ServerProperties {
 
 		}
 
+		/**
+		 * When to use APR.
+		 */
+		public enum UseApr {
+
+			/**
+			 * Always use APR and fail if it's not available.
+			 */
+			ALWAYS,
+
+			/**
+			 * Use APR if it is available.
+			 */
+			WHEN_AVAILABLE,
+
+			/**
+			 * Never use APR.
+			 */
+			NEVER
+
+		}
+
 	}
 
 	/**
@@ -1129,6 +1186,11 @@ public class ServerProperties {
 		 * Maximum size of the form content in any HTTP post request.
 		 */
 		private DataSize maxHttpFormPostSize = DataSize.ofBytes(200000);
+
+		/**
+		 * Maximum number of form keys.
+		 */
+		private int maxFormKeys = 1000;
 
 		/**
 		 * Time that the connection can be idle before it is closed.
@@ -1160,6 +1222,14 @@ public class ServerProperties {
 
 		public void setMaxHttpFormPostSize(DataSize maxHttpFormPostSize) {
 			this.maxHttpFormPostSize = maxHttpFormPostSize;
+		}
+
+		public int getMaxFormKeys() {
+			return this.maxFormKeys;
+		}
+
+		public void setMaxFormKeys(int maxFormKeys) {
+			this.maxFormKeys = maxFormKeys;
 		}
 
 		public Duration getConnectionIdleTimeout() {
@@ -1334,12 +1404,14 @@ public class ServerProperties {
 			private Integer selectors = -1;
 
 			/**
-			 * Maximum number of threads.
+			 * Maximum number of threads. Doesn't have an effect if virtual threads are
+			 * enabled.
 			 */
 			private Integer max = 200;
 
 			/**
-			 * Minimum number of threads.
+			 * Minimum number of threads. Doesn't have an effect if virtual threads are
+			 * enabled.
 			 */
 			private Integer min = 8;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Phillip Webb
  */
 @AssertFileChannelDataBlocksClosed
-class JarLauncherTests extends AbstractExecutableArchiveLauncherTests {
+class JarLauncherTests extends AbstractLauncherTests {
 
 	@Test
 	void explodedJarHasOnlyBootInfClassesAndContentsOfBootInfLibOnClasspath() throws Exception {
@@ -113,10 +113,6 @@ class JarLauncherTests extends AbstractExecutableArchiveLauncherTests {
 			Class<?> loaded = classLoader.loadClass("explodedsample.ExampleClass");
 			assertThat(loaded.getPackage().getImplementationTitle()).isEqualTo("test");
 		}));
-	}
-
-	private URLClassLoader createClassLoader(JarLauncher launcher) throws Exception {
-		return (URLClassLoader) launcher.createClassLoader(launcher.getClassPathUrls());
 	}
 
 	private URL[] getExpectedFileUrls(File explodedRoot) {

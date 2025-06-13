@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,14 +22,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import org.springframework.aot.generate.GenerationContext;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.TypeReference;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
 import org.springframework.beans.factory.aot.BeanFactoryInitializationAotContribution;
 import org.springframework.beans.factory.aot.BeanFactoryInitializationAotProcessor;
-import org.springframework.beans.factory.aot.BeanFactoryInitializationCode;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -37,6 +35,8 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.mock.web.MockServletContext;
+import org.springframework.util.ClassUtils;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
@@ -49,6 +49,9 @@ import org.springframework.web.context.WebApplicationContext;
  */
 class ServletComponentRegisteringPostProcessor
 		implements BeanFactoryPostProcessor, ApplicationContextAware, BeanFactoryInitializationAotProcessor {
+
+	private static final boolean MOCK_SERVLET_CONTEXT_AVAILABLE = ClassUtils
+		.isPresent("org.springframework.mock.web.MockServletContext", null);
 
 	private static final List<ServletComponentHandler> HANDLERS;
 
@@ -70,7 +73,7 @@ class ServletComponentRegisteringPostProcessor
 
 	@Override
 	public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
-		if (isRunningInEmbeddedWebServer()) {
+		if (eligibleForServletComponentScanning()) {
 			ClassPathScanningCandidateComponentProvider componentProvider = createComponentProvider();
 			for (String packageToScan : this.packagesToScan) {
 				scanPackage(componentProvider, packageToScan);
@@ -88,9 +91,10 @@ class ServletComponentRegisteringPostProcessor
 		}
 	}
 
-	private boolean isRunningInEmbeddedWebServer() {
+	private boolean eligibleForServletComponentScanning() {
 		return this.applicationContext instanceof WebApplicationContext webApplicationContext
-				&& webApplicationContext.getServletContext() == null;
+				&& (webApplicationContext.getServletContext() == null || (MOCK_SERVLET_CONTEXT_AVAILABLE
+						&& webApplicationContext.getServletContext() instanceof MockServletContext));
 	}
 
 	private ClassPathScanningCandidateComponentProvider createComponentProvider() {
@@ -115,26 +119,19 @@ class ServletComponentRegisteringPostProcessor
 
 	@Override
 	public BeanFactoryInitializationAotContribution processAheadOfTime(ConfigurableListableBeanFactory beanFactory) {
-		return new BeanFactoryInitializationAotContribution() {
-
-			@Override
-			public void applyTo(GenerationContext generationContext,
-					BeanFactoryInitializationCode beanFactoryInitializationCode) {
-				for (String beanName : beanFactory.getBeanDefinitionNames()) {
-					BeanDefinition definition = beanFactory.getBeanDefinition(beanName);
-					if (Objects.equals(definition.getBeanClassName(),
-							WebListenerHandler.ServletComponentWebListenerRegistrar.class.getName())) {
-						String listenerClassName = (String) definition.getConstructorArgumentValues()
-							.getArgumentValue(0, String.class)
-							.getValue();
-						generationContext.getRuntimeHints()
-							.reflection()
-							.registerType(TypeReference.of(listenerClassName),
-									MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
-					}
+		return (generationContext, beanFactoryInitializationCode) -> {
+			for (String beanName : beanFactory.getBeanDefinitionNames()) {
+				BeanDefinition definition = beanFactory.getBeanDefinition(beanName);
+				if (Objects.equals(definition.getBeanClassName(),
+						WebListenerHandler.ServletComponentWebListenerRegistrar.class.getName())) {
+					String listenerClassName = (String) definition.getConstructorArgumentValues()
+						.getArgumentValue(0, String.class)
+						.getValue();
+					generationContext.getRuntimeHints()
+						.reflection()
+						.registerType(TypeReference.of(listenerClassName), MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
 				}
 			}
-
 		};
 	}
 

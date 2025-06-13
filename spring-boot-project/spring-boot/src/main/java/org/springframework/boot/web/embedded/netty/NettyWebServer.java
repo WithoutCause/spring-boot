@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -88,29 +88,14 @@ public class NettyWebServer implements WebServer {
 	 * @param handlerAdapter the handler adapter
 	 * @param lifecycleTimeout the lifecycle timeout, may be {@code null}
 	 * @param shutdown the shutdown, may be {@code null}
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of
-	 * {@link #NettyWebServer(HttpServer, ReactorHttpHandlerAdapter, Duration, Shutdown, ReactorResourceFactory)}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public NettyWebServer(HttpServer httpServer, ReactorHttpHandlerAdapter handlerAdapter, Duration lifecycleTimeout,
-			Shutdown shutdown) {
-		this(httpServer, handlerAdapter, lifecycleTimeout, shutdown, null);
-	}
-
-	/**
-	 * Creates a new {@code NettyWebServer} instance.
-	 * @param httpServer the HTTP server
-	 * @param handlerAdapter the handler adapter
-	 * @param lifecycleTimeout the lifecycle timeout, may be {@code null}
-	 * @param shutdown the shutdown, may be {@code null}
 	 * @param resourceFactory the factory for the server's {@link LoopResources loop
 	 * resources}, may be {@code null}
 	 * @since 3.2.0
 	 */
 	public NettyWebServer(HttpServer httpServer, ReactorHttpHandlerAdapter handlerAdapter, Duration lifecycleTimeout,
 			Shutdown shutdown, ReactorResourceFactory resourceFactory) {
-		Assert.notNull(httpServer, "HttpServer must not be null");
-		Assert.notNull(handlerAdapter, "HandlerAdapter must not be null");
+		Assert.notNull(httpServer, "'httpServer' must not be null");
+		Assert.notNull(handlerAdapter, "'handlerAdapter' must not be null");
 		this.lifecycleTimeout = lifecycleTimeout;
 		this.handler = handlerAdapter;
 		this.httpServer = httpServer.channelGroup(new DefaultChannelGroup(new DefaultEventExecutor()));
@@ -177,7 +162,7 @@ public class NettyWebServer implements WebServer {
 		}
 		if (this.resourceFactory != null) {
 			LoopResources resources = this.resourceFactory.getLoopResources();
-			Assert.notNull(resources, "No LoopResources: is ReactorResourceFactory not initialized yet?");
+			Assert.state(resources != null, "No LoopResources: is ReactorResourceFactory not initialized yet?");
 			server = server.runOn(resources);
 		}
 		if (this.lifecycleTimeout != null) {
@@ -197,6 +182,14 @@ public class NettyWebServer implements WebServer {
 		return false;
 	}
 
+	/**
+	 * Initiates a graceful shutdown of the Netty web server. Handling of new requests is
+	 * prevented and the given {@code callback} is invoked at the end of the attempt. The
+	 * attempt can be explicitly ended by invoking {@link #stop}.
+	 * <p>
+	 * Once shutdown has been initiated Netty will reject any new connections. Requests +
+	 * on existing idle connections will also be rejected.
+	 */
 	@Override
 	public void shutDownGracefully(GracefulShutdownCallback callback) {
 		if (this.gracefulShutdown == null) {

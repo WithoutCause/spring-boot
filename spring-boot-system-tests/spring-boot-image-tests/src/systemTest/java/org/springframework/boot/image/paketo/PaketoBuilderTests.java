@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -32,9 +33,8 @@ import org.assertj.core.api.Condition;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledForJreRange;
-import org.junit.jupiter.api.condition.JRE;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -47,7 +47,6 @@ import org.springframework.boot.image.junit.GradleBuildInjectionExtension;
 import org.springframework.boot.testsupport.gradle.testkit.GradleBuild;
 import org.springframework.boot.testsupport.gradle.testkit.GradleBuildExtension;
 import org.springframework.boot.testsupport.gradle.testkit.GradleVersions;
-import org.springframework.util.StringUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
@@ -61,7 +60,6 @@ import static org.assertj.core.api.Assertions.entry;
  * @author Scott Frederick
  */
 @ExtendWith({ GradleBuildInjectionExtension.class, GradleBuildExtension.class })
-@EnabledForJreRange(max = JRE.JAVA_21)
 class PaketoBuilderTests {
 
 	GradleBuild gradleBuild;
@@ -72,7 +70,8 @@ class PaketoBuilderTests {
 				new File("build/system-test-maven-repository").getAbsoluteFile().toURI().toASCIIString());
 		this.gradleBuild.scriptPropertyFrom(new File("../../gradle.properties"), "nativeBuildToolsVersion");
 		this.gradleBuild.expectDeprecationMessages("BPL_SPRING_CLOUD_BINDINGS_ENABLED.*true.*Deprecated");
-		this.gradleBuild.expectDeprecationMessages("BOM table is deprecated");
+		this.gradleBuild.expectDeprecationMessages("Command \"packages\" is deprecated, use `syft scan` instead");
+		this.gradleBuild.expectDeprecationMessages("BP_ENABLE_RUNTIME_CERT_BINDING.*true.*Deprecated");
 		this.gradleBuild.gradleVersion(GradleVersions.maximumCompatible());
 	}
 
@@ -83,6 +82,7 @@ class PaketoBuilderTests {
 		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
 		BuildResult result = buildImage(imageName);
 		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
 		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
 			container.withExposedPorts(8080);
 			container.waitingFor(Wait.forHttp("/test")).start();
@@ -114,6 +114,7 @@ class PaketoBuilderTests {
 		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
 		BuildResult result = buildImage(imageName);
 		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
 		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
 			container.withCommand("--server.port=9090");
 			container.withExposedPorts(9090);
@@ -131,6 +132,7 @@ class PaketoBuilderTests {
 		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
 		BuildResult result = buildImage(imageName);
 		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
 		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
 			container.withExposedPorts(8080);
 			container.waitingFor(Wait.forHttp("/test")).start();
@@ -149,6 +151,7 @@ class PaketoBuilderTests {
 	}
 
 	@Test
+	@Disabled("0.4.292 of the builder launches an unpacked jar rather than the script in bin")
 	void bootDistZipJarApp() throws Exception {
 		writeMainClass();
 		String projectName = this.gradleBuild.getProjectDir().getName();
@@ -156,6 +159,7 @@ class PaketoBuilderTests {
 		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
 		BuildResult result = buildImage(imageName, "assemble", "bootDistZip");
 		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
 		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
 			container.withExposedPorts(8080);
 			container.waitingFor(Wait.forHttp("/test")).start();
@@ -192,6 +196,7 @@ class PaketoBuilderTests {
 		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
 		BuildResult result = buildImage(imageName, "assemble", "bootDistZip");
 		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
 		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
 			container.withExposedPorts(8080);
 			container.waitingFor(Wait.forHttp("/test")).start();
@@ -229,6 +234,7 @@ class PaketoBuilderTests {
 		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
 		BuildResult result = buildImage(imageName);
 		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
 		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
 			container.withExposedPorts(8080);
 			container.waitingFor(Wait.forHttp("/test")).start();
@@ -259,8 +265,9 @@ class PaketoBuilderTests {
 		writeServletInitializerClass();
 		String imageName = "paketo-integration/" + this.gradleBuild.getProjectDir().getName();
 		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
-		BuildResult result = buildImage(imageName);
+		BuildResult result = buildImageWithRetry(imageName);
 		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
 		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
 			container.withExposedPorts(8080);
 			container.waitingFor(Wait.forHttp("/test")).start();
@@ -271,13 +278,9 @@ class PaketoBuilderTests {
 							"paketo-buildpacks/apache-tomcat", "paketo-buildpacks/dist-zip",
 							"paketo-buildpacks/spring-boot");
 				metadata.processOfType("web")
-					.satisfiesExactly((command) -> assertThat(command).endsWith("sh"),
-							(arg) -> assertThat(arg).endsWith("catalina.sh"),
-							(arg) -> assertThat(arg).isEqualTo("run"));
+					.containsSubsequence("sh", "/layers/paketo-buildpacks_apache-tomcat/tomcat/bin/catalina.sh", "run");
 				metadata.processOfType("tomcat")
-					.satisfiesExactly((command) -> assertThat(command).endsWith("sh"),
-							(arg) -> assertThat(arg).endsWith("catalina.sh"),
-							(arg) -> assertThat(arg).isEqualTo("run"));
+					.containsSubsequence("sh", "/layers/paketo-buildpacks_apache-tomcat/tomcat/bin/catalina.sh", "run");
 			});
 			assertImageHasJvmSbomLayer(imageReference, config);
 			assertImageHasDependenciesSbomLayer(imageReference, config, "apache-tomcat");
@@ -299,7 +302,6 @@ class PaketoBuilderTests {
 	}
 
 	@Test
-	@EnabledForJreRange(max = JRE.JAVA_17)
 	void nativeApp() throws Exception {
 		this.gradleBuild.expectDeprecationMessages("uses or overrides a deprecated API");
 		this.gradleBuild.expectDeprecationMessages("has been deprecated and marked for removal");
@@ -312,6 +314,7 @@ class PaketoBuilderTests {
 		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
 		BuildResult result = buildImage(imageName);
 		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
 		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
 			container.withExposedPorts(8080);
 			container.waitingFor(Wait.forHttp("/test")).start();
@@ -334,10 +337,75 @@ class PaketoBuilderTests {
 		}
 	}
 
+	@Test
+	void classDataSharingApp() throws Exception {
+		writeMainClass();
+		String imageName = "paketo-integration/" + this.gradleBuild.getProjectDir().getName();
+		ImageReference imageReference = ImageReference.of(ImageName.of(imageName));
+		BuildResult result = buildImage(imageName);
+		assertThat(result.task(":bootBuildImage").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+		assertThat(result.getOutput()).contains("Running creator");
+		try (GenericContainer<?> container = new GenericContainer<>(imageName)) {
+			container.withExposedPorts(8080);
+			container.waitingFor(Wait.forHttp("/test")).start();
+			ContainerConfig config = container.getContainerInfo().getConfig();
+			assertLabelsMatchManifestAttributes(config);
+			ImageAssertions.assertThat(config).buildMetadata((metadata) -> {
+				metadata.buildpacks()
+					.contains("paketo-buildpacks/ca-certificates", "paketo-buildpacks/bellsoft-liberica",
+							"paketo-buildpacks/executable-jar", "paketo-buildpacks/dist-zip",
+							"paketo-buildpacks/spring-boot");
+				metadata.processOfType("web")
+					.satisfiesExactly((command) -> assertThat(command).isEqualTo("java"),
+							(arg) -> assertThat(arg).isEqualTo("-cp"),
+							(arg) -> assertThat(arg).startsWith("runner.jar"),
+							(arg) -> assertThat(arg).isEqualTo("example.ExampleApplication"));
+				metadata.processOfType("spring-boot-app")
+					.satisfiesExactly((command) -> assertThat(command).isEqualTo("java"),
+							(arg) -> assertThat(arg).isEqualTo("-cp"),
+							(arg) -> assertThat(arg).startsWith("runner.jar"),
+							(arg) -> assertThat(arg).isEqualTo("example.ExampleApplication"));
+				metadata.processOfType("executable-jar")
+					.containsExactly("java", "org.springframework.boot.loader.launch.JarLauncher");
+			});
+			assertImageHasJvmSbomLayer(imageReference, config);
+			assertImageHasDependenciesSbomLayer(imageReference, config, "executable-jar");
+		}
+		finally {
+			removeImage(imageReference);
+		}
+	}
+
+	private BuildResult buildImageWithRetry(String imageName, String... arguments) {
+		long start = System.nanoTime();
+		while (true) {
+			try {
+				return buildImage(imageName, arguments);
+			}
+			catch (Exception ex) {
+				if (Duration.ofNanos(System.nanoTime() - start).toMinutes() > 6) {
+					throw ex;
+				}
+				sleep(500);
+			}
+		}
+	}
+
+	private void sleep(long time) {
+		try {
+			Thread.sleep(time);
+		}
+		catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+		}
+	}
+
 	private BuildResult buildImage(String imageName, String... arguments) {
-		String[] buildImageArgs = { "bootBuildImage", "--imageName=" + imageName, "--pullPolicy=IF_NOT_PRESENT" };
-		String[] args = StringUtils.concatenateStringArrays(arguments, buildImageArgs);
-		return this.gradleBuild.build(args);
+		List<String> args = new ArrayList<>(List.of(arguments));
+		args.add("bootBuildImage");
+		args.add("--imageName=" + imageName);
+		args.add("--pullPolicy=IF_NOT_PRESENT");
+		return this.gradleBuild.build(args.toArray(new String[0]));
 	}
 
 	private void writeMainClass() throws IOException {

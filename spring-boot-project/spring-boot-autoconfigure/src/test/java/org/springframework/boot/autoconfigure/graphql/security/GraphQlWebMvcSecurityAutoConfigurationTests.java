@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.springframework.boot.autoconfigure.graphql.security;
 
 import graphql.schema.idl.TypeRuntimeWiring;
+import org.assertj.core.api.ThrowingConsumer;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -30,40 +31,54 @@ import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfi
 import org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration;
 import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.boot.testsupport.classpath.resources.WithResource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.graphql.execution.ErrorType;
 import org.springframework.graphql.execution.RuntimeWiringConfigurer;
 import org.springframework.graphql.execution.SecurityDataFetcherExceptionResolver;
 import org.springframework.http.MediaType;
-import org.springframework.lang.Nullable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.DefaultSecurityFilterChain;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.config.Customizer.withDefaults;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests for {@link GraphQlWebMvcSecurityAutoConfiguration}.
  *
  * @author Brian Clozel
  */
+@WithResource(name = "graphql/types/book.graphqls", content = """
+		type Book {
+		    id: ID
+		    name: String
+		    pageCount: Int
+		    author: String
+		}
+		""")
+@WithResource(name = "graphql/schema.graphqls", content = """
+		type Query {
+		    greeting(name: String! = "Spring"): String!
+		    bookById(id: ID): Book
+		    books: BookConnection
+		}
+
+		type Subscription {
+		    booksOnSale(minPages: Int) : Book!
+		}
+		""")
 class GraphQlWebMvcSecurityAutoConfigurationTests {
 
 	private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
@@ -82,48 +97,44 @@ class GraphQlWebMvcSecurityAutoConfigurationTests {
 
 	@Test
 	void anonymousUserShouldBeUnauthorized() {
-		testWith((mockMvc) -> {
+		withMockMvc((mvc) -> {
 			String query = "{ bookById(id: \\\"book-1\\\"){ id name pageCount author }}";
-			MvcResult result = mockMvc.perform(post("/graphql").content("{\"query\": \"" + query + "\"}")).andReturn();
-			mockMvc.perform(asyncDispatch(result))
-				.andExpect(status().isOk())
-				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-				.andExpect(jsonPath("data.bookById.name").doesNotExist())
-				.andExpect(jsonPath("errors[0].extensions.classification").value(ErrorType.UNAUTHORIZED.toString()));
+			assertThat(mvc.post().uri("/graphql").content("{\"query\": \"" + query + "\"}")).satisfies((result) -> {
+				assertThat(result).hasStatusOk().hasContentTypeCompatibleWith(MediaType.APPLICATION_JSON);
+				assertThat(result).bodyJson()
+					.doesNotHavePath("data.bookById.name")
+					.extractingPath("errors[0].extensions.classification")
+					.asString()
+					.isEqualTo(ErrorType.UNAUTHORIZED.toString());
+			});
 		});
 	}
 
 	@Test
 	void authenticatedUserShouldGetData() {
-		testWith((mockMvc) -> {
+		withMockMvc((mvc) -> {
 			String query = "{  bookById(id: \\\"book-1\\\"){ id name pageCount author }}";
-			MvcResult result = mockMvc
-				.perform(post("/graphql").content("{\"query\": \"" + query + "\"}").with(user("rob")))
-				.andReturn();
-			mockMvc.perform(asyncDispatch(result))
-				.andExpect(status().isOk())
-				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-				.andExpect(jsonPath("data.bookById.name").value("GraphQL for beginners"))
-				.andExpect(jsonPath("errors").doesNotExist());
+			assertThat(mvc.post().uri("/graphql").content("{\"query\": \"" + query + "\"}").with(user("rob")))
+				.satisfies((result) -> {
+					assertThat(result).hasStatusOk().hasContentTypeCompatibleWith(MediaType.APPLICATION_JSON);
+					assertThat(result).bodyJson()
+						.doesNotHavePath("errors")
+						.extractingPath("data.bookById.name")
+						.asString()
+						.isEqualTo("GraphQL for beginners");
+				});
 		});
-
 	}
 
-	private void testWith(MockMvcConsumer mockMvcConsumer) {
+	private void withMockMvc(ThrowingConsumer<MockMvcTester> mvc) {
 		this.contextRunner.run((context) -> {
 			MediaType mediaType = MediaType.APPLICATION_JSON;
-			MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
-				.defaultRequest(post("/graphql").contentType(mediaType).accept(mediaType))
-				.apply(springSecurity())
-				.build();
-			mockMvcConsumer.accept(mockMvc);
+			MockMvcTester mockMVc = MockMvcTester.from(context,
+					(builder) -> builder.defaultRequest(post("/graphql").contentType(mediaType).accept(mediaType))
+						.apply(springSecurity())
+						.build());
+			mvc.accept(mockMVc);
 		});
-	}
-
-	private interface MockMvcConsumer {
-
-		void accept(MockMvc mockMvc) throws Exception;
-
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -145,7 +156,6 @@ class GraphQlWebMvcSecurityAutoConfigurationTests {
 	static class BookService {
 
 		@PreAuthorize("hasRole('USER')")
-		@Nullable
 		Book getBookdById(String id) {
 			return GraphQlTestDataFetchers.getBookById(id);
 		}
@@ -160,7 +170,7 @@ class GraphQlWebMvcSecurityAutoConfigurationTests {
 
 		@Bean
 		DefaultSecurityFilterChain springWebFilterChain(HttpSecurity http) throws Exception {
-			return http.csrf((c) -> c.disable())
+			return http.csrf(CsrfConfigurer::disable)
 				// Demonstrate that method security works
 				// Best practice to use both for defense in depth
 				.authorizeHttpRequests((requests) -> requests.anyRequest().permitAll())

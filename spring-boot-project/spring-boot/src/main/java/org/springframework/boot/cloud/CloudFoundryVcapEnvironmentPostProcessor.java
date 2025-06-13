@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -91,14 +91,10 @@ import org.springframework.util.StringUtils;
  */
 public class CloudFoundryVcapEnvironmentPostProcessor implements EnvironmentPostProcessor, Ordered {
 
-	private static final String VCAP_APPLICATION = "VCAP_APPLICATION";
-
-	private static final String VCAP_SERVICES = "VCAP_SERVICES";
-
 	private final Log logger;
 
 	// Before ConfigDataEnvironmentPostProcessor so values there can use these
-	private int order = ConfigDataEnvironmentPostProcessor.ORDER - 1;
+	private int order = ConfigDataEnvironmentPostProcessor.ORDER - 5;
 
 	/**
 	 * Create a new {@link CloudFoundryVcapEnvironmentPostProcessor} instance.
@@ -126,12 +122,12 @@ public class CloudFoundryVcapEnvironmentPostProcessor implements EnvironmentPost
 			addWithPrefix(properties, getPropertiesFromApplication(environment, jsonParser), "vcap.application.");
 			addWithPrefix(properties, getPropertiesFromServices(environment, jsonParser), "vcap.services.");
 			MutablePropertySources propertySources = environment.getPropertySources();
+			PropertiesPropertySource vcapSource = new PropertiesPropertySource("vcap", properties);
 			if (propertySources.contains(CommandLinePropertySource.COMMAND_LINE_PROPERTY_SOURCE_NAME)) {
-				propertySources.addAfter(CommandLinePropertySource.COMMAND_LINE_PROPERTY_SOURCE_NAME,
-						new PropertiesPropertySource("vcap", properties));
+				propertySources.addAfter(CommandLinePropertySource.COMMAND_LINE_PROPERTY_SOURCE_NAME, vcapSource);
 			}
 			else {
-				propertySources.addFirst(new PropertiesPropertySource("vcap", properties));
+				propertySources.addFirst(vcapSource);
 			}
 		}
 	}
@@ -146,7 +142,7 @@ public class CloudFoundryVcapEnvironmentPostProcessor implements EnvironmentPost
 	private Properties getPropertiesFromApplication(Environment environment, JsonParser parser) {
 		Properties properties = new Properties();
 		try {
-			String property = environment.getProperty(VCAP_APPLICATION, "{}");
+			String property = environment.getProperty("VCAP_APPLICATION", "{}");
 			Map<String, Object> map = parser.parseMap(property);
 			extractPropertiesFromApplication(properties, map);
 		}
@@ -159,7 +155,7 @@ public class CloudFoundryVcapEnvironmentPostProcessor implements EnvironmentPost
 	private Properties getPropertiesFromServices(Environment environment, JsonParser parser) {
 		Properties properties = new Properties();
 		try {
-			String property = environment.getProperty(VCAP_SERVICES, "{}");
+			String property = environment.getProperty("VCAP_SERVICES", "{}");
 			Map<String, Object> map = parser.parseMap(property);
 			extractPropertiesFromServices(properties, map);
 		}
@@ -201,9 +197,8 @@ public class CloudFoundryVcapEnvironmentPostProcessor implements EnvironmentPost
 				// Need a compound key
 				flatten(properties, (Map<String, Object>) value, name);
 			}
-			else if (value instanceof Collection) {
+			else if (value instanceof Collection<?> collection) {
 				// Need a compound key
-				Collection<Object> collection = (Collection<Object>) value;
 				properties.put(name, StringUtils.collectionToCommaDelimitedString(collection));
 				int count = 0;
 				for (Object item : collection) {
@@ -214,10 +209,7 @@ public class CloudFoundryVcapEnvironmentPostProcessor implements EnvironmentPost
 			else if (value instanceof String) {
 				properties.put(name, value);
 			}
-			else if (value instanceof Number) {
-				properties.put(name, value.toString());
-			}
-			else if (value instanceof Boolean) {
+			else if (value instanceof Number || value instanceof Boolean) {
 				properties.put(name, value.toString());
 			}
 			else {

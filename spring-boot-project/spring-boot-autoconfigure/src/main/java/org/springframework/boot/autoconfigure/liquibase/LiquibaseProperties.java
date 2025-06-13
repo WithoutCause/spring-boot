@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.springframework.boot.autoconfigure.liquibase;
 
 import java.io.File;
+import java.util.List;
 import java.util.Map;
 
 import liquibase.UpdateSummaryEnum;
@@ -51,9 +52,9 @@ public class LiquibaseProperties {
 	private boolean clearChecksums;
 
 	/**
-	 * Comma-separated list of runtime contexts to use.
+	 * List of runtime contexts to use.
 	 */
-	private String contexts;
+	private List<String> contexts;
 
 	/**
 	 * Default database schema.
@@ -112,9 +113,9 @@ public class LiquibaseProperties {
 	private String url;
 
 	/**
-	 * Comma-separated list of runtime labels to use.
+	 * List of runtime labels to use.
 	 */
-	private String labelFilter;
+	private List<String> labelFilter;
 
 	/**
 	 * Change log parameters.
@@ -151,22 +152,32 @@ public class LiquibaseProperties {
 	/**
 	 * Which UIService to use.
 	 */
-	private UIService uiService;
+	private UiService uiService;
+
+	/**
+	 * Whether to send product usage data and analytics to Liquibase.
+	 */
+	private Boolean analyticsEnabled;
+
+	/**
+	 * Liquibase Pro license key.
+	 */
+	private String licenseKey;
 
 	public String getChangeLog() {
 		return this.changeLog;
 	}
 
 	public void setChangeLog(String changeLog) {
-		Assert.notNull(changeLog, "ChangeLog must not be null");
+		Assert.notNull(changeLog, "'changeLog' must not be null");
 		this.changeLog = changeLog;
 	}
 
-	public String getContexts() {
+	public List<String> getContexts() {
 		return this.contexts;
 	}
 
-	public void setContexts(String contexts) {
+	public void setContexts(List<String> contexts) {
 		this.contexts = contexts;
 	}
 
@@ -266,11 +277,11 @@ public class LiquibaseProperties {
 		this.url = url;
 	}
 
-	public String getLabelFilter() {
+	public List<String> getLabelFilter() {
 		return this.labelFilter;
 	}
 
-	public void setLabelFilter(String labelFilter) {
+	public void setLabelFilter(List<String> labelFilter) {
 		this.labelFilter = labelFilter;
 	}
 
@@ -322,12 +333,28 @@ public class LiquibaseProperties {
 		this.showSummaryOutput = showSummaryOutput;
 	}
 
-	public UIService getUiService() {
+	public UiService getUiService() {
 		return this.uiService;
 	}
 
-	public void setUiService(UIService uiService) {
+	public void setUiService(UiService uiService) {
 		this.uiService = uiService;
+	}
+
+	public Boolean getAnalyticsEnabled() {
+		return this.analyticsEnabled;
+	}
+
+	public void setAnalyticsEnabled(Boolean analyticsEnabled) {
+		this.analyticsEnabled = analyticsEnabled;
+	}
+
+	public String getLicenseKey() {
+		return this.licenseKey;
+	}
+
+	public void setLicenseKey(String licenseKey) {
+		this.licenseKey = licenseKey;
 	}
 
 	/**
@@ -386,10 +413,8 @@ public class LiquibaseProperties {
 	 * Enumeration of types of UIService. Values are the same as those on
 	 * {@link UIServiceEnum}. To maximize backwards compatibility, the Liquibase enum is
 	 * not used directly.
-	 *
-	 * @since 3.3.0
 	 */
-	public enum UIService {
+	public enum UiService {
 
 		/**
 		 * Console-based UIService.

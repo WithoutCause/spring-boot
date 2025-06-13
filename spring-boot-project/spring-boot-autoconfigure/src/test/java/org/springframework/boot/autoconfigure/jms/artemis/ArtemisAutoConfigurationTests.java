@@ -41,6 +41,8 @@ import org.apache.activemq.artemis.jms.server.config.impl.JMSConfigurationImpl;
 import org.apache.activemq.artemis.jms.server.config.impl.JMSQueueConfigurationImpl;
 import org.apache.activemq.artemis.jms.server.config.impl.TopicConfigurationImpl;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledForJreRange;
+import org.junit.jupiter.api.condition.JRE;
 import org.junit.jupiter.api.io.TempDir;
 import org.messaginghub.pooled.jms.JmsPoolConnectionFactory;
 
@@ -64,6 +66,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Eddú Meléndez
  * @author Stephane Nicoll
  */
+@EnabledForJreRange(min = JRE.JAVA_17, max = JRE.JAVA_22,
+		disabledReason = "https://issues.apache.org/jira/browse/ARTEMIS-4975")
 class ArtemisAutoConfigurationTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
@@ -449,7 +453,7 @@ class ArtemisAutoConfigurationTests {
 
 		void checkDestination(String name, RoutingType routingType, boolean shouldExist) {
 			try {
-				BindingQueryResult result = this.server.bindingQuery(new SimpleString(name));
+				BindingQueryResult result = this.server.bindingQuery(SimpleString.of(name));
 				assertThat(result.isExists()).isEqualTo(shouldExist);
 				if (shouldExist) {
 					assertThat(result.getAddressInfo().getRoutingType()).isEqualTo(routingType);

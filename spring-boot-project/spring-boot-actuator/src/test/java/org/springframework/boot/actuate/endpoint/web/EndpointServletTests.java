@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,18 +36,19 @@ import static org.assertj.core.api.Assertions.entry;
  * @author Phillip Webb
  * @author Stephane Nicoll
  */
+@SuppressWarnings({ "deprecation", "removal" })
 class EndpointServletTests {
 
 	@Test
 	void createWhenServletClassIsNullShouldThrowException() {
 		assertThatIllegalArgumentException().isThrownBy(() -> new EndpointServlet((Class<Servlet>) null))
-			.withMessageContaining("Servlet must not be null");
+			.withMessageContaining("'servlet' must not be null");
 	}
 
 	@Test
 	void createWhenServletIsNullShouldThrowException() {
 		assertThatIllegalArgumentException().isThrownBy(() -> new EndpointServlet((Servlet) null))
-			.withMessageContaining("Servlet must not be null");
+			.withMessageContaining("'servlet' must not be null");
 	}
 
 	@Test

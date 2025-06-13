@@ -11,6 +11,7 @@ For complete details see the
 https://docs.spring.io/spring-boot/docs/current/reference/htmlsingle/#using-boot-starter[reference documentation]
 
 == Community Contributions
+
 If you create a starter for a technology that is not already in the standard list we can
 list it here. To ask us to do so, please open a pull request that updates this page.
 
@@ -70,6 +71,9 @@ do as they were designed before this was clarified.
 | https://www.couchbase.com/[Couchbase] HTTP session
 | https://github.com/mkopylec/session-couchbase-spring-boot-starter
 
+| https://dapr.io[Dapr]
+| https://github.com/dapr/java-sdk/
+
 | DataSource decorating (https://github.com/p6spy/p6spy[P6Spy], https://github.com/ttddyy/datasource-proxy[datasource-proxy], https://github.com/vladmihalcea/flexy-pool[FlexyPool])
 | https://github.com/gavlyukovskiy/spring-boot-data-source-decorator
 
@@ -113,7 +117,7 @@ do as they were designed before this was clarified.
 | https://github.com/dabla/grizzly-spring-boot-starter
 
 | https://www.grpc.io/[gRPC]
-| https://github.com/LogNet/grpc-spring-boot-starter & https://github.com/yidongnan/grpc-spring-boot-starter
+| https://github.com/LogNet/grpc-spring-boot-starter & https://github.com/yidongnan/grpc-spring-boot-starter & https://github.com/DanielLiu1123/grpc-starter
 
 | https://ha-jdbc.github.io/[HA JDBC]
 | https://github.com/lievendoclo/hajdbc-spring-boot
@@ -175,6 +179,9 @@ do as they were designed before this was clarified.
 | https://developer.nexmo.com/[Nexmo]
 | https://github.com/nexmo/nexmo-spring-boot-starter
 
+| https://github.com/nostr-protocol/nostr[Nostr]
+| https://github.com/theborakompanioni/nostr-spring-boot-starter
+
 | https://github.com/nutzam/nutz[Nutz]
 | https://github.com/nutzam/nutzmore
 
@@ -186,6 +193,9 @@ do as they were designed before this was clarified.
 
 | https://developer.okta.com/[Okta]
 | https://github.com/okta/okta-spring-boot
+
+| https://opentelemetry.io/docs/languages/java/automatic/spring-boot/#opentelemetry-spring-boot-starter[OpenTelemetry]
+| https://github.com/open-telemetry/opentelemetry-java-instrumentation/tree/main/instrumentation/spring/starters/spring-boot-starter
 
 | https://www.optaplanner.org/[OptaPlanner]
 | https://github.com/kiegroup/optaplanner/tree/master/optaplanner-spring-integration/optaplanner-spring-boot-starter
@@ -229,6 +239,9 @@ do as they were designed before this was clarified.
 | https://projects.spring.io/spring-batch/[Spring Batch] (Advanced usage)
 | https://github.com/codecentric/spring-boot-starter-batch-web
 
+| https://docs.spring.io/spring-framework/reference/integration/rest-clients.html#rest-http-interface[Spring Http Interface]
+| https://github.com/DanielLiu1123/httpexchange-spring-boot-starter
+
 | https://projects.spring.io/spring-shell/[Spring Shell]
 | https://github.com/fonimus/ssh-shell-spring-boot
 
@@ -246,6 +259,9 @@ do as they were designed before this was clarified.
 
 | https://github.com/structurizr/java[Structurizr]
 | https://github.com/Catalysts/structurizr-extensions
+
+| https://docs.styra.com/das/systems/springboot/[Styra DAS] (https://www.openpolicyagent.org/[OPA])
+| https://github.com/styrainc/opa-springboot
 
 | https://www.torproject.org/[Tor]
 | https://github.com/theborakompanioni/tor-spring-boot-starter

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
-import org.gradle.api.GradleException;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
-import org.gradle.util.GradleVersion;
 
 import org.springframework.boot.gradle.dsl.SpringBootExtension;
 import org.springframework.boot.gradle.tasks.bundling.BootBuildImage;
@@ -115,18 +113,9 @@ public class SpringBootPlugin implements Plugin<Project> {
 
 	@Override
 	public void apply(Project project) {
-		verifyGradleVersion();
 		createExtension(project);
 		Configuration bootArchives = createBootArchivesConfiguration(project);
 		registerPluginActions(project, bootArchives);
-	}
-
-	private void verifyGradleVersion() {
-		GradleVersion currentVersion = GradleVersion.current();
-		if (currentVersion.compareTo(GradleVersion.version("7.4")) < 0) {
-			throw new GradleException("Spring Boot plugin requires Gradle 7.x (7.4 or later). "
-					+ "The current version is " + currentVersion);
-		}
 	}
 
 	private void createExtension(Project project) {
@@ -145,7 +134,8 @@ public class SpringBootPlugin implements Plugin<Project> {
 				project.getArtifacts());
 		List<PluginApplicationAction> actions = Arrays.asList(new JavaPluginAction(singlePublishedArtifact),
 				new WarPluginAction(singlePublishedArtifact), new DependencyManagementPluginAction(),
-				new ApplicationPluginAction(), new KotlinPluginAction(), new NativeImagePluginAction());
+				new ApplicationPluginAction(), new KotlinPluginAction(), new NativeImagePluginAction(),
+				new CycloneDxPluginAction());
 		for (PluginApplicationAction action : actions) {
 			withPluginClassOfAction(action,
 					(pluginClass) -> project.getPlugins().withType(pluginClass, (plugin) -> action.execute(project)));

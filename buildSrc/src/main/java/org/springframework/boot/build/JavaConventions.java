@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,13 +24,15 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
-import com.gradle.enterprise.gradleplugin.testretry.TestRetryExtension;
-import com.gradle.enterprise.gradleplugin.testselection.PredictiveTestSelectionExtension;
+import com.gradle.develocity.agent.gradle.test.DevelocityTestConfiguration;
+import com.gradle.develocity.agent.gradle.test.PredictiveTestSelectionConfiguration;
+import com.gradle.develocity.agent.gradle.test.TestRetryConfiguration;
 import io.spring.javaformat.gradle.SpringJavaFormatPlugin;
 import io.spring.javaformat.gradle.tasks.CheckFormat;
 import io.spring.javaformat.gradle.tasks.Format;
 import org.gradle.api.JavaVersion;
 import org.gradle.api.Project;
+import org.gradle.api.Task;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.Dependency;
@@ -43,6 +45,7 @@ import org.gradle.api.plugins.quality.CheckstyleExtension;
 import org.gradle.api.plugins.quality.CheckstylePlugin;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
+import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.bundling.Jar;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.api.tasks.javadoc.Javadoc;
@@ -52,6 +55,8 @@ import org.gradle.external.javadoc.CoreJavadocOptions;
 import org.springframework.boot.build.architecture.ArchitecturePlugin;
 import org.springframework.boot.build.classpath.CheckClasspathForProhibitedDependencies;
 import org.springframework.boot.build.optional.OptionalDependenciesPlugin;
+import org.springframework.boot.build.springframework.CheckAotFactories;
+import org.springframework.boot.build.springframework.CheckSpringFactories;
 import org.springframework.boot.build.testing.TestFailuresPlugin;
 import org.springframework.boot.build.toolchain.ToolchainPlugin;
 import org.springframework.util.StringUtils;
@@ -68,7 +73,7 @@ import org.springframework.util.StringUtils;
  * <li>{@link Test} tasks are configured:
  * <ul>
  * <li>to use JUnit Platform
- * <li>with a max heap of 1024M
+ * <li>with a max heap of 1536M
  * <li>to run after any Checkstyle and format checking tasks
  * <li>to enable retries with a maximum of three attempts when running on CI
  * <li>to use predictive test selection when the value of the
@@ -83,8 +88,8 @@ import org.springframework.util.StringUtils;
  * <ul>
  * <li>Use {@code -parameters}.
  * <li>Treat warnings as errors
- * <li>Enable {@code unchecked}, {@code deprecation}, {@code rawtypes}, and {@code varags}
- * warnings
+ * <li>Enable {@code unchecked}, {@code deprecation}, {@code rawtypes}, and
+ * {@code varargs} warnings
  * </ul>
  * <li>{@link Jar} tasks are configured to produce jars with LICENSE.txt and NOTICE.txt
  * files and the following manifest entries:
@@ -96,6 +101,19 @@ import org.springframework.util.StringUtils;
  * <li>{@code Implementation-Version}
  * </ul>
  * <li>{@code spring-boot-parent} is used for dependency management</li>
+ * <li>Additional checks are configured:
+ * <ul>
+ * <li>For all source sets:
+ * <ul>
+ * <li>Prohibited dependencies on the compile classpath
+ * <li>Prohibited dependencies on the runtime classpath
+ * </ul>
+ * <li>For the {@code main} source set:
+ * <ul>
+ * <li>{@code META-INF/spring/aot.factories}
+ * <li>{@code META-INF/spring.factories}
+ * </ul>
+ * </ul>
  * </ul>
  *
  * <p/>
@@ -121,15 +139,17 @@ class JavaConventions {
 			configureDependencyManagement(project);
 			configureToolchain(project);
 			configureProhibitedDependencyChecks(project);
+			configureFactoriesFilesChecks(project);
 		});
 	}
 
 	private void configureJarManifestConventions(Project project) {
-		ExtractResources extractLegalResources = project.getTasks()
-			.create("extractLegalResources", ExtractResources.class);
-		extractLegalResources.getDestinationDirectory().set(project.getLayout().getBuildDirectory().dir("legal"));
-		extractLegalResources.setResourcesNames(Arrays.asList("LICENSE.txt", "NOTICE.txt"));
-		extractLegalResources.property("version", project.getVersion().toString());
+		TaskProvider<ExtractResources> extractLegalResources = project.getTasks()
+			.register("extractLegalResources", ExtractResources.class, (task) -> {
+				task.getDestinationDirectory().set(project.getLayout().getBuildDirectory().dir("legal"));
+				task.getResourceNames().set(Arrays.asList("LICENSE.txt", "NOTICE.txt"));
+				task.getProperties().put("version", project.getVersion().toString());
+			});
 		SourceSetContainer sourceSets = project.getExtensions().getByType(SourceSetContainer.class);
 		Set<String> sourceJarTaskNames = sourceSets.stream()
 			.map(SourceSet::getSourcesJarTaskName)
@@ -166,7 +186,7 @@ class JavaConventions {
 	private void configureTestConventions(Project project) {
 		project.getTasks().withType(Test.class, (test) -> {
 			test.useJUnitPlatform();
-			test.setMaxHeapSize("1024M");
+			test.setMaxHeapSize("1536M");
 			project.getTasks().withType(Checkstyle.class, test::mustRunAfter);
 			project.getTasks().withType(CheckFormat.class, test::mustRunAfter);
 			configureTestRetries(test);
@@ -178,7 +198,9 @@ class JavaConventions {
 	}
 
 	private void configureTestRetries(Test test) {
-		TestRetryExtension testRetry = test.getExtensions().getByType(TestRetryExtension.class);
+		TestRetryConfiguration testRetry = test.getExtensions()
+			.getByType(DevelocityTestConfiguration.class)
+			.getTestRetry();
 		testRetry.getFailOnPassedAfterRetry().set(false);
 		testRetry.getMaxRetries().set(isCi() ? 3 : 0);
 	}
@@ -189,8 +211,9 @@ class JavaConventions {
 
 	private void configurePredictiveTestSelection(Test test) {
 		if (isPredictiveTestSelectionEnabled()) {
-			PredictiveTestSelectionExtension predictiveTestSelection = test.getExtensions()
-				.getByType(PredictiveTestSelectionExtension.class);
+			PredictiveTestSelectionConfiguration predictiveTestSelection = test.getExtensions()
+				.getByType(DevelocityTestConfiguration.class)
+				.getPredictiveTestSelection();
 			predictiveTestSelection.getEnabled().convention(true);
 		}
 	}
@@ -257,8 +280,9 @@ class JavaConventions {
 			configuration.setCanBeResolved(false);
 		});
 		configurations
-			.matching((configuration) -> configuration.getName().endsWith("Classpath")
+			.matching((configuration) -> (configuration.getName().endsWith("Classpath")
 					|| JavaPlugin.ANNOTATION_PROCESSOR_CONFIGURATION_NAME.equals(configuration.getName()))
+					&& (!configuration.getName().contains("dokkatoo")))
 			.all((configuration) -> configuration.extendsFrom(dependencyManagement));
 		Dependency springBootParent = project.getDependencies()
 			.enforcedPlatform(project.getDependencies()
@@ -290,11 +314,33 @@ class JavaConventions {
 	}
 
 	private void createProhibitedDependenciesCheck(Configuration classpath, Project project) {
-		CheckClasspathForProhibitedDependencies checkClasspathForProhibitedDependencies = project.getTasks()
-			.create("check" + StringUtils.capitalize(classpath.getName() + "ForProhibitedDependencies"),
-					CheckClasspathForProhibitedDependencies.class);
-		checkClasspathForProhibitedDependencies.setClasspath(classpath);
+		TaskProvider<CheckClasspathForProhibitedDependencies> checkClasspathForProhibitedDependencies = project
+			.getTasks()
+			.register("check" + StringUtils.capitalize(classpath.getName() + "ForProhibitedDependencies"),
+					CheckClasspathForProhibitedDependencies.class, (task) -> task.setClasspath(classpath));
 		project.getTasks().getByName(JavaBasePlugin.CHECK_TASK_NAME).dependsOn(checkClasspathForProhibitedDependencies);
+	}
+
+	private void configureFactoriesFilesChecks(Project project) {
+		SourceSetContainer sourceSets = project.getExtensions().getByType(JavaPluginExtension.class).getSourceSets();
+		sourceSets.matching((sourceSet) -> SourceSet.MAIN_SOURCE_SET_NAME.equals(sourceSet.getName()))
+			.configureEach((main) -> {
+				TaskProvider<Task> check = project.getTasks().named(JavaBasePlugin.CHECK_TASK_NAME);
+				TaskProvider<CheckAotFactories> checkAotFactories = project.getTasks()
+					.register("checkAotFactories", CheckAotFactories.class, (task) -> {
+						task.setSource(main.getResources());
+						task.setClasspath(main.getOutput().getClassesDirs());
+						task.setDescription("Checks the META-INF/spring/aot.factories file of the main source set.");
+					});
+				check.configure((task) -> task.dependsOn(checkAotFactories));
+				TaskProvider<CheckSpringFactories> checkSpringFactories = project.getTasks()
+					.register("checkSpringFactories", CheckSpringFactories.class, (task) -> {
+						task.setSource(main.getResources());
+						task.setClasspath(main.getOutput().getClassesDirs());
+						task.setDescription("Checks the META-INF/spring.factories file of the main source set.");
+					});
+				check.configure((task) -> task.dependsOn(checkSpringFactories));
+			});
 	}
 
 }

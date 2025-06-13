@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.predicate.RuntimeHintsPredicates;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.boot.ApplicationContextFactory;
 import org.springframework.boot.SpringApplication;
@@ -41,6 +43,7 @@ import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ApplicationContextFailureProcessor;
+import org.springframework.test.context.BootstrapUtils;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.ContextHierarchy;
 import org.springframework.test.context.MergedContextConfiguration;
@@ -53,6 +56,8 @@ import org.springframework.web.context.WebApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
 
 /**
  * Tests for {@link SpringBootContextLoader}
@@ -60,6 +65,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
  * @author Stephane Nicoll
  * @author Scott Frederick
  * @author Madhura Bhave
+ * @author Sijun Yang
  */
 class SpringBootContextLoaderTests {
 
@@ -127,11 +133,6 @@ class SpringBootContextLoaderTests {
 		assertThat(getActiveProfiles(MultipleActiveProfiles.class)).containsExactly("profile1", "profile2");
 	}
 
-	@Test
-	void activeProfileWithComma() {
-		assertThat(getActiveProfiles(ActiveProfileWithComma.class)).containsExactly("profile1,2");
-	}
-
 	@Test // gh-28776
 	void testPropertyValuesShouldTakePrecedenceWhenInlinedPropertiesPresent() {
 		TestContext context = new ExposedTestContextManager(SimpleConfig.class).getExposedTestContext();
@@ -160,11 +161,11 @@ class SpringBootContextLoaderTests {
 			.stream()
 			.map(PropertySource::getName)
 			.collect(Collectors.toCollection(ArrayList::new));
-		String last = names.remove(names.size() - 1);
+		String configResource = names.remove(names.size() - 2);
 		assertThat(names).containsExactly("configurationProperties", "Inlined Test Properties", "commandLineArgs",
 				"servletConfigInitParams", "servletContextInitParams", "systemProperties", "systemEnvironment",
-				"random");
-		assertThat(last).startsWith("Config resource");
+				"random", "applicationInfo");
+		assertThat(configResource).startsWith("Config resource");
 	}
 
 	@Test
@@ -249,6 +250,29 @@ class SpringBootContextLoaderTests {
 	}
 
 	@Test
+	void whenMainMethodNotAvailableReturnsNoAotContribution() throws Exception {
+		SpringBootContextLoader contextLoader = new SpringBootContextLoader();
+		MergedContextConfiguration contextConfiguration = BootstrapUtils
+			.resolveTestContextBootstrapper(UseMainMethodWhenAvailableAndNoMainMethod.class)
+			.buildMergedContextConfiguration();
+		RuntimeHints runtimeHints = mock(RuntimeHints.class);
+		contextLoader.loadContextForAotProcessing(contextConfiguration, runtimeHints);
+		then(runtimeHints).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void whenMainMethodPresentRegisterReflectionHints() throws Exception {
+		SpringBootContextLoader contextLoader = new SpringBootContextLoader();
+		MergedContextConfiguration contextConfiguration = BootstrapUtils
+			.resolveTestContextBootstrapper(UseMainMethodWhenAvailableAndMainMethod.class)
+			.buildMergedContextConfiguration();
+		RuntimeHints runtimeHints = new RuntimeHints();
+		contextLoader.loadContextForAotProcessing(contextConfiguration, runtimeHints);
+		assertThat(RuntimeHintsPredicates.reflection().onMethod(ConfigWithMain.class, "main").invoke())
+			.accepts(runtimeHints);
+	}
+
+	@Test
 	void whenSubclassProvidesCustomApplicationContextFactory() {
 		TestContext testContext = new ExposedTestContextManager(CustomApplicationContextTest.class)
 			.getExposedTestContext();
@@ -314,14 +338,8 @@ class SpringBootContextLoaderTests {
 
 	}
 
-	@SpringBootTest(classes = Config.class)
-	@ActiveProfiles({ "profile1,2" })
-	static class ActiveProfileWithComma {
-
-	}
-
 	@SpringBootTest(properties = { "key=myValue" }, classes = Config.class)
-	@ActiveProfiles({ "profile1,2" })
+	@ActiveProfiles({ "profile1" })
 	static class ActiveProfileWithInlinedProperties {
 
 	}

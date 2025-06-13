@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,14 +36,19 @@ import io.undertow.Undertow.Builder;
 import io.undertow.servlet.api.DeploymentInfo;
 import io.undertow.servlet.api.ServletContainer;
 import jakarta.servlet.ServletRegistration.Dynamic;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.jasper.servlet.JspServlet;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledForJreRange;
+import org.junit.jupiter.api.condition.JRE;
 import org.mockito.InOrder;
 
+import org.springframework.boot.testsupport.classpath.resources.WithPackageResources;
 import org.springframework.boot.testsupport.web.servlet.ExampleServlet;
 import org.springframework.boot.web.server.ErrorPage;
 import org.springframework.boot.web.server.GracefulShutdownResult;
@@ -53,6 +58,7 @@ import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.boot.web.servlet.server.AbstractServletWebServerFactory;
 import org.springframework.boot.web.servlet.server.AbstractServletWebServerFactoryTests;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -97,7 +103,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	void setNullBuilderCustomizersThrows() {
 		UndertowServletWebServerFactory factory = getFactory();
 		assertThatIllegalArgumentException().isThrownBy(() -> factory.setBuilderCustomizers(null))
-			.withMessageContaining("Customizers must not be null");
+			.withMessageContaining("'customizers' must not be null");
 	}
 
 	@Test
@@ -105,7 +111,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 		UndertowServletWebServerFactory factory = getFactory();
 		assertThatIllegalArgumentException()
 			.isThrownBy(() -> factory.addBuilderCustomizers((UndertowBuilderCustomizer[]) null))
-			.withMessageContaining("Customizers must not be null");
+			.withMessageContaining("'customizers' must not be null");
 	}
 
 	@Test
@@ -126,7 +132,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	void setNullDeploymentInfoCustomizersThrows() {
 		UndertowServletWebServerFactory factory = getFactory();
 		assertThatIllegalArgumentException().isThrownBy(() -> factory.setDeploymentInfoCustomizers(null))
-			.withMessageContaining("Customizers must not be null");
+			.withMessageContaining("'customizers' must not be null");
 	}
 
 	@Test
@@ -134,7 +140,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 		UndertowServletWebServerFactory factory = getFactory();
 		assertThatIllegalArgumentException()
 			.isThrownBy(() -> factory.addDeploymentInfoCustomizers((UndertowDeploymentInfoCustomizer[]) null))
-			.withMessageContaining("Customizers must not be null");
+			.withMessageContaining("'customizers' must not be null");
 	}
 
 	@Test
@@ -152,6 +158,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	}
 
 	@Test
+	@WithPackageResources("test.jks")
 	void basicSslClasspathKeyStore() throws Exception {
 		testBasicSslWithKeyStore("classpath:test.jks");
 	}
@@ -213,17 +220,51 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	}
 
 	@Test
+	void whenServerIsShuttingDownARequestOnAnIdleConnectionAreRejectedWithServiceUnavailable() throws Exception {
+		AbstractServletWebServerFactory factory = getFactory();
+		factory.setShutdown(Shutdown.GRACEFUL);
+		BlockingServlet blockingServlet = new BlockingServlet();
+		this.webServer = factory.getWebServer((context) -> {
+			Dynamic registration = context.addServlet("blockingServlet", blockingServlet);
+			registration.addMapping("/blocking");
+			registration.setAsyncSupported(true);
+		});
+		HttpClient httpClient = HttpClients.createMinimal();
+		this.webServer.start();
+		int port = this.webServer.getPort();
+		Future<Object> keepAliveRequest = initiateGetRequest(httpClient, port, "/blocking");
+		blockingServlet.awaitQueue();
+		blockingServlet.admitOne();
+		assertThat(keepAliveRequest.get()).isInstanceOf(HttpResponse.class);
+		Future<Object> request = initiateGetRequest(port, "/blocking");
+		blockingServlet.awaitQueue();
+		this.webServer.shutDownGracefully((result) -> {
+		});
+		HttpResponse idleConnectionResponse = (HttpResponse) initiateGetRequest(httpClient, port, "/").get();
+		assertThat(idleConnectionResponse.getCode()).isEqualTo(503);
+		blockingServlet.admitOne();
+		Object response = request.get();
+		assertThat(response).isInstanceOf(HttpResponse.class);
+		this.webServer.stop();
+	}
+
+	@Test
+	@Override
+	@Disabled("https://issues.redhat.com/browse/UNDERTOW-2420")
+	protected void portClashOfSecondaryConnectorResultsInPortInUseException() throws Exception {
+		super.portClashOfSecondaryConnectorResultsInPortInUseException();
+	}
+
+	@Test
 	@Override
 	@Disabled("Restart after stop is not supported with Undertow")
 	protected void restartAfterStop() {
-
 	}
 
 	@Test
 	@Override
 	@Disabled("Undertow's architecture prevents separating stop and destroy")
 	protected void servletContextListenerContextDestroyedIsNotCalledWhenContainerIsStopped() {
-
 	}
 
 	private void testAccessLog(String prefix, String suffix, String expectedFile)
@@ -250,6 +291,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	}
 
 	@Test
+	@WithPackageResources("restricted.jks")
 	void sslRestrictedProtocolsEmptyCipherFailure() {
 		assertThatIOException()
 			.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.2" },
@@ -258,6 +300,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	}
 
 	@Test
+	@WithPackageResources("restricted.jks")
 	void sslRestrictedProtocolsECDHETLS1Failure() {
 		assertThatIOException()
 			.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1" },
@@ -266,18 +309,22 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	}
 
 	@Test
+	@WithPackageResources("restricted.jks")
 	void sslRestrictedProtocolsECDHESuccess() throws Exception {
 		testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.2" },
 				new String[] { "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256" });
 	}
 
 	@Test
+	@WithPackageResources("restricted.jks")
+	@DisabledForJreRange(min = JRE.JAVA_24)
 	void sslRestrictedProtocolsRSATLS12Success() throws Exception {
 		testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.2" },
 				new String[] { "TLS_RSA_WITH_AES_128_CBC_SHA256" });
 	}
 
 	@Test
+	@WithPackageResources("restricted.jks")
 	void sslRestrictedProtocolsRSATLS11Failure() {
 		assertThatIOException()
 			.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.1" },
@@ -336,6 +383,16 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	@Override
 	protected String startedLogMessage() {
 		return ((UndertowServletWebServer) this.webServer).getStartLogMessage();
+	}
+
+	private void testRestrictedSSLProtocolsAndCipherSuites(String[] protocols, String[] ciphers) throws Exception {
+		AbstractServletWebServerFactory factory = getFactory();
+		factory.setSsl(getSsl(null, "password", "classpath:restricted.jks", null, protocols, ciphers));
+		this.webServer = factory.getWebServer(new ServletRegistrationBean<>(new ExampleServlet(true, false), "/hello"));
+		this.webServer.start();
+		HttpComponentsClientHttpRequestFactory requestFactory = createHttpComponentsRequestFactory(
+				createTrustSelfSignedTlsSocketStrategy());
+		assertThat(getResponse(getLocalUrl("https", "/hello"), requestFactory)).contains("scheme=https");
 	}
 
 }

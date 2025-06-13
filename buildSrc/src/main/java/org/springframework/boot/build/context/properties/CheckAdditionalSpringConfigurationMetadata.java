@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,6 @@ import java.util.Map;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.gradle.api.GradleException;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.tasks.InputFiles;
@@ -40,24 +39,23 @@ import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SourceTask;
 import org.gradle.api.tasks.TaskAction;
+import org.gradle.api.tasks.VerificationException;
 
 /**
  * {@link SourceTask} that checks additional Spring configuration metadata files.
  *
  * @author Andy Wilkinson
  */
-public class CheckAdditionalSpringConfigurationMetadata extends SourceTask {
+public abstract class CheckAdditionalSpringConfigurationMetadata extends SourceTask {
 
-	private final RegularFileProperty reportLocation;
+	private final File projectDir;
 
 	public CheckAdditionalSpringConfigurationMetadata() {
-		this.reportLocation = getProject().getObjects().fileProperty();
+		this.projectDir = getProject().getProjectDir();
 	}
 
 	@OutputFile
-	public RegularFileProperty getReportLocation() {
-		return this.reportLocation;
-	}
+	public abstract RegularFileProperty getReportLocation();
 
 	@Override
 	@InputFiles
@@ -72,7 +70,7 @@ public class CheckAdditionalSpringConfigurationMetadata extends SourceTask {
 		File reportFile = getReportLocation().get().getAsFile();
 		Files.write(reportFile.toPath(), report, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 		if (report.hasProblems()) {
-			throw new GradleException(
+			throw new VerificationException(
 					"Problems found in additional Spring configuration metadata. See " + reportFile + " for details.");
 		}
 	}
@@ -82,7 +80,7 @@ public class CheckAdditionalSpringConfigurationMetadata extends SourceTask {
 		ObjectMapper objectMapper = new ObjectMapper();
 		Report report = new Report();
 		for (File file : getSource().getFiles()) {
-			Analysis analysis = report.analysis(getProject().getProjectDir().toPath().relativize(file.toPath()));
+			Analysis analysis = report.analysis(this.projectDir.toPath().relativize(file.toPath()));
 			Map<String, Object> json = objectMapper.readValue(file, Map.class);
 			check("groups", json, analysis);
 			check("properties", json, analysis);

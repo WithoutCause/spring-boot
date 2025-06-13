@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,10 +39,12 @@ import org.springframework.boot.docker.compose.core.DockerCompose;
 import org.springframework.boot.docker.compose.core.DockerComposeFile;
 import org.springframework.boot.docker.compose.core.RunningService;
 import org.springframework.boot.docker.compose.lifecycle.DockerComposeProperties.Readiness.Wait;
+import org.springframework.boot.docker.compose.lifecycle.DockerComposeProperties.Start.Skip;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
+import org.springframework.context.aot.AbstractAotProcessor;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.util.FileCopyUtils;
 
@@ -73,6 +75,8 @@ class DockerComposeLifecycleManagerTests {
 	private DockerCompose dockerCompose;
 
 	private Set<String> activeProfiles;
+
+	private List<String> arguments;
 
 	private GenericApplicationContext applicationContext;
 
@@ -123,7 +127,7 @@ class DockerComposeLifecycleManagerTests {
 
 	@Test
 	void startWhenAotProcessingDoesNotStart() {
-		withSystemProperty("spring.aot.processing", "true", () -> {
+		withSystemProperty(AbstractAotProcessor.AOT_PROCESSING, "true", () -> {
 			EventCapturingListener listener = new EventCapturingListener();
 			this.eventListeners.add(listener);
 			setUpRunningServices();
@@ -181,10 +185,10 @@ class DockerComposeLifecycleManagerTests {
 		this.lifecycleManager.start();
 		assertThat(listener.getEvent()).isNull();
 		then(this.dockerCompose).should().hasDefinedServices();
-		then(this.dockerCompose).should(never()).up(any());
-		then(this.dockerCompose).should(never()).start(any());
-		then(this.dockerCompose).should(never()).down(any());
-		then(this.dockerCompose).should(never()).stop(any());
+		then(this.dockerCompose).should(never()).up(any(), any());
+		then(this.dockerCompose).should(never()).start(any(), any());
+		then(this.dockerCompose).should(never()).down(any(), any());
+		then(this.dockerCompose).should(never()).stop(any(), any());
 	}
 
 	@Test
@@ -196,10 +200,10 @@ class DockerComposeLifecycleManagerTests {
 		this.lifecycleManager.start();
 		this.shutdownHandlers.run();
 		assertThat(listener.getEvent()).isNotNull();
-		then(this.dockerCompose).should().up(any());
-		then(this.dockerCompose).should(never()).start(any());
-		then(this.dockerCompose).should().stop(any());
-		then(this.dockerCompose).should(never()).down(any());
+		then(this.dockerCompose).should().up(any(), any());
+		then(this.dockerCompose).should(never()).start(any(), any());
+		then(this.dockerCompose).should().stop(any(), any());
+		then(this.dockerCompose).should(never()).down(any(), any());
 	}
 
 	@Test
@@ -211,10 +215,10 @@ class DockerComposeLifecycleManagerTests {
 		this.lifecycleManager.start();
 		this.shutdownHandlers.run();
 		assertThat(listener.getEvent()).isNotNull();
-		then(this.dockerCompose).should(never()).up(any());
-		then(this.dockerCompose).should(never()).start(any());
-		then(this.dockerCompose).should(never()).down(any());
-		then(this.dockerCompose).should(never()).stop(any());
+		then(this.dockerCompose).should(never()).up(any(), any());
+		then(this.dockerCompose).should(never()).start(any(), any());
+		then(this.dockerCompose).should(never()).down(any(), any());
+		then(this.dockerCompose).should(never()).stop(any(), any());
 	}
 
 	@Test
@@ -226,10 +230,10 @@ class DockerComposeLifecycleManagerTests {
 		this.lifecycleManager.start();
 		this.shutdownHandlers.run();
 		assertThat(listener.getEvent()).isNotNull();
-		then(this.dockerCompose).should(never()).up(any());
-		then(this.dockerCompose).should(never()).start(any());
-		then(this.dockerCompose).should(never()).down(any());
-		then(this.dockerCompose).should(never()).stop(any());
+		then(this.dockerCompose).should(never()).up(any(), any());
+		then(this.dockerCompose).should(never()).start(any(), any());
+		then(this.dockerCompose).should(never()).down(any(), any());
+		then(this.dockerCompose).should(never()).stop(any(), any());
 	}
 
 	@Test
@@ -241,10 +245,10 @@ class DockerComposeLifecycleManagerTests {
 		this.lifecycleManager.start();
 		this.shutdownHandlers.run();
 		assertThat(listener.getEvent()).isNotNull();
-		then(this.dockerCompose).should().up(any());
-		then(this.dockerCompose).should(never()).start(any());
-		then(this.dockerCompose).should(never()).down(any());
-		then(this.dockerCompose).should(never()).stop(any());
+		then(this.dockerCompose).should().up(any(), any());
+		then(this.dockerCompose).should(never()).start(any(), any());
+		then(this.dockerCompose).should(never()).down(any(), any());
+		then(this.dockerCompose).should(never()).stop(any(), any());
 		this.shutdownHandlers.assertNoneAdded();
 	}
 
@@ -258,10 +262,10 @@ class DockerComposeLifecycleManagerTests {
 		this.lifecycleManager.start();
 		this.shutdownHandlers.run();
 		assertThat(listener.getEvent()).isNotNull();
-		then(this.dockerCompose).should(never()).up(any());
-		then(this.dockerCompose).should().start(any());
-		then(this.dockerCompose).should().stop(any());
-		then(this.dockerCompose).should(never()).down(any());
+		then(this.dockerCompose).should(never()).up(any(), any());
+		then(this.dockerCompose).should().start(any(), any());
+		then(this.dockerCompose).should().stop(any(), any());
+		then(this.dockerCompose).should(never()).down(any(), any());
 	}
 
 	@Test
@@ -274,10 +278,10 @@ class DockerComposeLifecycleManagerTests {
 		this.lifecycleManager.start();
 		this.shutdownHandlers.run();
 		assertThat(listener.getEvent()).isNotNull();
-		then(this.dockerCompose).should().up(any());
-		then(this.dockerCompose).should(never()).start(any());
-		then(this.dockerCompose).should(never()).stop(any());
-		then(this.dockerCompose).should().down(any());
+		then(this.dockerCompose).should().up(any(), any());
+		then(this.dockerCompose).should(never()).start(any(), any());
+		then(this.dockerCompose).should(never()).stop(any(), any());
+		then(this.dockerCompose).should().down(any(), any());
 	}
 
 	@Test
@@ -291,7 +295,7 @@ class DockerComposeLifecycleManagerTests {
 		this.lifecycleManager.start();
 		this.shutdownHandlers.run();
 		assertThat(listener.getEvent()).isNotNull();
-		then(this.dockerCompose).should().stop(timeout);
+		then(this.dockerCompose).should().stop(timeout, Collections.emptyList());
 	}
 
 	@Test
@@ -358,6 +362,14 @@ class DockerComposeLifecycleManagerTests {
 	}
 
 	@Test
+	void startGetsDockerComposeWithArguments() {
+		this.properties.getArguments().add("--project-name=test");
+		setUpRunningServices();
+		this.lifecycleManager.start();
+		assertThat(this.arguments).containsExactly("--project-name=test");
+	}
+
+	@Test
 	void startPublishesEvent() {
 		EventCapturingListener listener = new EventCapturingListener();
 		this.eventListeners.add(listener);
@@ -382,6 +394,38 @@ class DockerComposeLifecycleManagerTests {
 		given(this.dockerCompose.getRunningServices()).willReturn(Collections.emptyList());
 		this.lifecycleManager.start();
 		assertThat(output).doesNotContain("There are already Docker Compose services running, skipping startup");
+	}
+
+	@Test
+	void shouldStartIfSkipModeIsIfRunningAndNoServicesAreRunning() {
+		given(this.dockerCompose.hasDefinedServices()).willReturn(true);
+		this.properties.getStart().setSkip(Skip.IF_RUNNING);
+		this.lifecycleManager.start();
+		then(this.dockerCompose).should().up(any(), any());
+	}
+
+	@Test
+	void shouldNotStartIfSkipModeIsIfRunningAndServicesAreAlreadyRunning() {
+		setUpRunningServices();
+		this.properties.getStart().setSkip(Skip.IF_RUNNING);
+		this.lifecycleManager.start();
+		then(this.dockerCompose).should(never()).up(any(), any());
+	}
+
+	@Test
+	void shouldStartIfSkipModeIsNeverAndNoServicesAreRunning() {
+		given(this.dockerCompose.hasDefinedServices()).willReturn(true);
+		this.properties.getStart().setSkip(Skip.NEVER);
+		this.lifecycleManager.start();
+		then(this.dockerCompose).should().up(any(), any());
+	}
+
+	@Test
+	void shouldStartIfSkipModeIsNeverAndServicesAreAlreadyRunning() {
+		setUpRunningServices();
+		this.properties.getStart().setSkip(Skip.NEVER);
+		this.lifecycleManager.start();
+		then(this.dockerCompose).should().up(any(), any());
 	}
 
 	private void setUpRunningServices() {
@@ -486,8 +530,10 @@ class DockerComposeLifecycleManagerTests {
 		}
 
 		@Override
-		protected DockerCompose getDockerCompose(DockerComposeFile composeFile, Set<String> activeProfiles) {
+		protected DockerCompose getDockerCompose(DockerComposeFile composeFile, Set<String> activeProfiles,
+				List<String> arguments) {
 			DockerComposeLifecycleManagerTests.this.activeProfiles = activeProfiles;
+			DockerComposeLifecycleManagerTests.this.arguments = arguments;
 			return DockerComposeLifecycleManagerTests.this.dockerCompose;
 		}
 

@@ -9,9 +9,11 @@ bootJar {
 
 repositories {
 	mavenCentral()
-	maven { url "file:repository" }
+	maven {
+		url = 'repository'
+	}
 }
 
 dependencies {
-	implementation("org.bouncycastle:bcprov-jdk18on:1.76")
+	implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 }

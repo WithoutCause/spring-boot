@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,13 +22,11 @@ import java.util.concurrent.Executor;
 import graphql.GraphQL;
 import graphql.execution.instrumentation.ChainedInstrumentation;
 import graphql.execution.instrumentation.Instrumentation;
+import graphql.introspection.Introspection;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLOutputType;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.RuntimeWiring;
-import graphql.schema.idl.TypeDefinitionRegistry;
-import graphql.schema.visibility.DefaultGraphqlFieldVisibility;
-import graphql.schema.visibility.NoIntrospectionGraphqlFieldVisibility;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,11 +39,13 @@ import org.springframework.boot.autoconfigure.task.TaskExecutionAutoConfiguratio
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.testsupport.classpath.resources.WithResource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.graphql.ExecutionGraphQlService;
+import org.springframework.graphql.data.method.HandlerMethodArgumentResolver;
 import org.springframework.graphql.data.method.annotation.support.AnnotatedControllerConfigurer;
 import org.springframework.graphql.data.pagination.EncodingCursorStrategy;
 import org.springframework.graphql.execution.BatchLoaderRegistry;
@@ -53,7 +53,6 @@ import org.springframework.graphql.execution.DataFetcherExceptionResolver;
 import org.springframework.graphql.execution.DataLoaderRegistrar;
 import org.springframework.graphql.execution.GraphQlSource;
 import org.springframework.graphql.execution.RuntimeWiringConfigurer;
-import org.springframework.graphql.execution.TypeDefinitionConfigurer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -61,6 +60,25 @@ import static org.mockito.Mockito.mock;
 /**
  * Tests for {@link GraphQlAutoConfiguration}.
  */
+@WithResource(name = "graphql/types/book.graphqls", content = """
+		type Book {
+		    id: ID
+		    name: String
+		    pageCount: Int
+		    author: String
+		}
+		""")
+@WithResource(name = "graphql/schema.graphqls", content = """
+		type Query {
+		    greeting(name: String! = "Spring"): String!
+		    bookById(id: ID): Book
+		    books: BookConnection
+		}
+
+		type Subscription {
+		    booksOnSale(minPages: Int) : Book!
+		}
+		""")
 @ExtendWith(OutputCaptureExtension.class)
 class GraphQlAutoConfigurationTests {
 
@@ -101,6 +119,12 @@ class GraphQlAutoConfigurationTests {
 	}
 
 	@Test
+	@WithResource(name = "graphql/types/person.custom", content = """
+			type Person {
+			    id: ID
+			    name: String
+			}
+			""")
 	void shouldScanLocationsWithCustomExtension() {
 		this.contextRunner.withPropertyValues("spring.graphql.schema.file-extensions:.graphqls,.custom")
 			.run((context) -> {
@@ -113,10 +137,33 @@ class GraphQlAutoConfigurationTests {
 	}
 
 	@Test
-	void shouldBackOffWithCustomGraphQlSource() {
+	@WithResource(name = "graphql/types/person.custom", content = """
+			type Person {
+			    id: ID
+			    name: String
+			}
+			""")
+	void shouldConfigureAdditionalSchemaFiles() {
+		this.contextRunner
+			.withPropertyValues("spring.graphql.schema.additional-files=classpath:graphql/types/person.custom")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(GraphQlSource.class);
+				GraphQlSource graphQlSource = context.getBean(GraphQlSource.class);
+				GraphQLSchema schema = graphQlSource.schema();
+				assertThat(schema.getObjectType("Book")).isNotNull();
+				assertThat(schema.getObjectType("Person")).isNotNull();
+			});
+	}
+
+	@Test
+	void shouldUseCustomGraphQlSource() {
 		this.contextRunner.withUserConfiguration(CustomGraphQlSourceConfiguration.class).run((context) -> {
 			assertThat(context).getBeanNames(GraphQlSource.class).containsOnly("customGraphQlSource");
-			assertThat(context).hasSingleBean(GraphQlProperties.class);
+			assertThat(context).hasSingleBean(GraphQlProperties.class)
+				.hasSingleBean(BatchLoaderRegistry.class)
+				.hasSingleBean(ExecutionGraphQlService.class)
+				.hasSingleBean(AnnotatedControllerConfigurer.class)
+				.hasSingleBean(EncodingCursorStrategy.class);
 		});
 	}
 
@@ -173,21 +220,13 @@ class GraphQlAutoConfigurationTests {
 
 	@Test
 	void fieldIntrospectionShouldBeEnabledByDefault() {
-		this.contextRunner.run((context) -> {
-			GraphQlSource graphQlSource = context.getBean(GraphQlSource.class);
-			GraphQLSchema schema = graphQlSource.schema();
-			assertThat(schema.getCodeRegistry().getFieldVisibility()).isInstanceOf(DefaultGraphqlFieldVisibility.class);
-		});
+		this.contextRunner.run((context) -> assertThat(Introspection.isEnabledJvmWide()).isTrue());
 	}
 
 	@Test
 	void shouldDisableFieldIntrospection() {
-		this.contextRunner.withPropertyValues("spring.graphql.schema.introspection.enabled:false").run((context) -> {
-			GraphQlSource graphQlSource = context.getBean(GraphQlSource.class);
-			GraphQLSchema schema = graphQlSource.schema();
-			assertThat(schema.getCodeRegistry().getFieldVisibility())
-				.isInstanceOf(NoIntrospectionGraphqlFieldVisibility.class);
-		});
+		this.contextRunner.withPropertyValues("spring.graphql.schema.introspection.enabled:false")
+			.run((context) -> assertThat(Introspection.isEnabledJvmWide()).isFalse());
 	}
 
 	@Test
@@ -225,14 +264,6 @@ class GraphQlAutoConfigurationTests {
 	}
 
 	@Test
-	void shouldUseCustomTypeDefinitionConfigurerWhenDefined() {
-		this.contextRunner.withUserConfiguration(CustomTypeDefinitionConfigurer.class).run((context) -> {
-			TestTypeDefinitionConfigurer configurer = context.getBean(TestTypeDefinitionConfigurer.class);
-			assertThat(configurer.applied).isTrue();
-		});
-	}
-
-	@Test
 	void whenApplicationTaskExecutorIsDefinedThenAnnotatedControllerConfigurerShouldUseIt() {
 		this.contextRunner.withConfiguration(AutoConfigurations.of(TaskExecutionAutoConfiguration.class))
 			.run((context) -> {
@@ -250,6 +281,15 @@ class GraphQlAutoConfigurationTests {
 				.getBean(AnnotatedControllerConfigurer.class);
 			assertThat(annotatedControllerConfigurer).extracting("executor").isNull();
 		});
+	}
+
+	@Test
+	void whenAHandlerMethodArgumentResolverIsDefinedThenAnnotatedControllerConfigurerShouldUseIt() {
+		this.contextRunner.withUserConfiguration(CustomHandlerMethodArgumentResolverConfiguration.class)
+			.run((context) -> assertThat(context.getBean(AnnotatedControllerConfigurer.class))
+				.extracting("customArgumentResolvers")
+				.asInstanceOf(InstanceOfAssertFactories.LIST)
+				.hasSize(1));
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -347,23 +387,11 @@ class GraphQlAutoConfigurationTests {
 
 	}
 
-	@Configuration(proxyBeanMethods = false)
-	static class CustomTypeDefinitionConfigurer {
+	static class CustomHandlerMethodArgumentResolverConfiguration {
 
 		@Bean
-		TestTypeDefinitionConfigurer testTypeDefinitionConfigurer() {
-			return new TestTypeDefinitionConfigurer();
-		}
-
-	}
-
-	static class TestTypeDefinitionConfigurer implements TypeDefinitionConfigurer {
-
-		boolean applied = false;
-
-		@Override
-		public void configure(TypeDefinitionRegistry registry) {
-			this.applied = true;
+		HandlerMethodArgumentResolver customHandlerMethodArgumentResolver() {
+			return mock(HandlerMethodArgumentResolver.class);
 		}
 
 	}

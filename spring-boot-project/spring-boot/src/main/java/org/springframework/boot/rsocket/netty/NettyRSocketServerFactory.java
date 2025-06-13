@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import io.rsocket.SocketAcceptor;
 import io.rsocket.transport.ServerTransport;
@@ -31,7 +33,7 @@ import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.transport.netty.server.WebsocketServerTransport;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServer;
-import reactor.netty.tcp.AbstractProtocolSslContextSpec;
+import reactor.netty.tcp.SslProvider.GenericSslContextSpec;
 import reactor.netty.tcp.TcpServer;
 
 import org.springframework.boot.context.properties.PropertyMapper;
@@ -43,6 +45,8 @@ import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.web.embedded.netty.SslServerCustomizer;
 import org.springframework.boot.web.server.Ssl;
+import org.springframework.boot.web.server.Ssl.ClientAuth;
+import org.springframework.boot.web.server.Ssl.ServerNameSslBundle;
 import org.springframework.boot.web.server.WebServerSslBundle;
 import org.springframework.http.client.ReactorResourceFactory;
 import org.springframework.util.Assert;
@@ -123,7 +127,7 @@ public class NettyRSocketServerFactory implements RSocketServerFactory, Configur
 	 * @since 2.2.7
 	 */
 	public void setRSocketServerCustomizers(Collection<? extends RSocketServerCustomizer> rSocketServerCustomizers) {
-		Assert.notNull(rSocketServerCustomizers, "RSocketServerCustomizers must not be null");
+		Assert.notNull(rSocketServerCustomizers, "'rSocketServerCustomizers' must not be null");
 		this.rSocketServerCustomizers = new ArrayList<>(rSocketServerCustomizers);
 	}
 
@@ -134,7 +138,7 @@ public class NettyRSocketServerFactory implements RSocketServerFactory, Configur
 	 * @since 2.2.7
 	 */
 	public void addRSocketServerCustomizers(RSocketServerCustomizer... rSocketServerCustomizers) {
-		Assert.notNull(rSocketServerCustomizers, "RSocketServerCustomizers must not be null");
+		Assert.notNull(rSocketServerCustomizers, "'rSocketServerCustomizers' must not be null");
 		this.rSocketServerCustomizers.addAll(Arrays.asList(rSocketServerCustomizers));
 	}
 
@@ -181,7 +185,8 @@ public class NettyRSocketServerFactory implements RSocketServerFactory, Configur
 	}
 
 	private HttpServer customizeSslConfiguration(HttpServer httpServer) {
-		return new SslServerCustomizer(null, this.ssl.getClientAuth(), getSslBundle()).apply(httpServer);
+		return new SslServerCustomizer(null, this.ssl.getClientAuth(), getSslBundle(), getServerNameSslBundles())
+			.apply(httpServer);
 	}
 
 	private ServerTransport<CloseableChannel> createTcpTransport() {
@@ -190,13 +195,24 @@ public class NettyRSocketServerFactory implements RSocketServerFactory, Configur
 			tcpServer = tcpServer.runOn(this.resourceFactory.getLoopResources());
 		}
 		if (Ssl.isEnabled(this.ssl)) {
-			tcpServer = new TcpSslServerCustomizer(this.ssl.getClientAuth(), getSslBundle()).apply(tcpServer);
+			tcpServer = new TcpSslServerCustomizer(this.ssl.getClientAuth(), getSslBundle(), getServerNameSslBundles())
+				.apply(tcpServer);
 		}
 		return TcpServerTransport.create(tcpServer.bindAddress(this::getListenAddress));
 	}
 
 	private SslBundle getSslBundle() {
 		return WebServerSslBundle.get(this.ssl, this.sslBundles);
+	}
+
+	protected final Map<String, SslBundle> getServerNameSslBundles() {
+		return this.ssl.getServerNameBundles()
+			.stream()
+			.collect(Collectors.toMap(Ssl.ServerNameSslBundle::serverName, this::getBundle));
+	}
+
+	private SslBundle getBundle(ServerNameSslBundle serverNameSslBundle) {
+		return this.sslBundles.getBundle(serverNameSslBundle.bundle());
 	}
 
 	private InetSocketAddress getListenAddress() {
@@ -211,13 +227,14 @@ public class NettyRSocketServerFactory implements RSocketServerFactory, Configur
 
 		private final SslBundle sslBundle;
 
-		private TcpSslServerCustomizer(Ssl.ClientAuth clientAuth, SslBundle sslBundle) {
-			super(null, clientAuth, sslBundle);
+		private TcpSslServerCustomizer(ClientAuth clientAuth, SslBundle sslBundle,
+				Map<String, SslBundle> serverNameSslBundles) {
+			super(null, clientAuth, sslBundle, serverNameSslBundles);
 			this.sslBundle = sslBundle;
 		}
 
 		private TcpServer apply(TcpServer server) {
-			AbstractProtocolSslContextSpec<?> sslContextSpec = createSslContextSpec(this.sslBundle);
+			GenericSslContextSpec<?> sslContextSpec = createSslContextSpec(this.sslBundle);
 			return server.secure((spec) -> spec.sslContext(sslContextSpec));
 		}
 

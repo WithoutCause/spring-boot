@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,9 +28,9 @@ import org.apache.pulsar.client.api.interceptor.ProducerInterceptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.thread.Threading;
 import org.springframework.boot.util.LambdaSafe;
 import org.springframework.context.annotation.Bean;
@@ -52,11 +52,14 @@ import org.springframework.pulsar.core.PulsarConsumerFactory;
 import org.springframework.pulsar.core.PulsarProducerFactory;
 import org.springframework.pulsar.core.PulsarReaderFactory;
 import org.springframework.pulsar.core.PulsarTemplate;
+import org.springframework.pulsar.core.PulsarTopicBuilder;
 import org.springframework.pulsar.core.ReaderBuilderCustomizer;
 import org.springframework.pulsar.core.SchemaResolver;
 import org.springframework.pulsar.core.TopicResolver;
 import org.springframework.pulsar.listener.PulsarContainerProperties;
 import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
+import org.springframework.pulsar.transaction.PulsarAwareTransactionManager;
+import org.springframework.pulsar.transaction.PulsarTransactionManager;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for Apache Pulsar.
@@ -73,9 +76,9 @@ import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
 @Import(PulsarConfiguration.class)
 public class PulsarAutoConfiguration {
 
-	private PulsarProperties properties;
+	private final PulsarProperties properties;
 
-	private PulsarPropertiesMapper propertiesMapper;
+	private final PulsarPropertiesMapper propertiesMapper;
 
 	PulsarAutoConfiguration(PulsarProperties properties) {
 		this.properties = properties;
@@ -84,26 +87,33 @@ public class PulsarAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(PulsarProducerFactory.class)
-	@ConditionalOnProperty(name = "spring.pulsar.producer.cache.enabled", havingValue = "false")
+	@ConditionalOnBooleanProperty(name = "spring.pulsar.producer.cache.enabled", havingValue = false)
 	DefaultPulsarProducerFactory<?> pulsarProducerFactory(PulsarClient pulsarClient, TopicResolver topicResolver,
-			ObjectProvider<ProducerBuilderCustomizer<?>> customizersProvider) {
+			ObjectProvider<ProducerBuilderCustomizer<?>> customizersProvider,
+			ObjectProvider<PulsarTopicBuilder> topicBuilderProvider) {
 		List<ProducerBuilderCustomizer<Object>> lambdaSafeCustomizers = lambdaSafeProducerBuilderCustomizers(
 				customizersProvider);
-		return new DefaultPulsarProducerFactory<>(pulsarClient, this.properties.getProducer().getTopicName(),
-				lambdaSafeCustomizers, topicResolver);
+		DefaultPulsarProducerFactory<?> producerFactory = new DefaultPulsarProducerFactory<>(pulsarClient,
+				this.properties.getProducer().getTopicName(), lambdaSafeCustomizers, topicResolver);
+		topicBuilderProvider.ifAvailable(producerFactory::setTopicBuilder);
+		return producerFactory;
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(PulsarProducerFactory.class)
-	@ConditionalOnProperty(name = "spring.pulsar.producer.cache.enabled", havingValue = "true", matchIfMissing = true)
+	@ConditionalOnBooleanProperty(name = "spring.pulsar.producer.cache.enabled", matchIfMissing = true)
 	CachingPulsarProducerFactory<?> cachingPulsarProducerFactory(PulsarClient pulsarClient, TopicResolver topicResolver,
-			ObjectProvider<ProducerBuilderCustomizer<?>> customizersProvider) {
+			ObjectProvider<ProducerBuilderCustomizer<?>> customizersProvider,
+			ObjectProvider<PulsarTopicBuilder> topicBuilderProvider) {
 		PulsarProperties.Producer.Cache cacheProperties = this.properties.getProducer().getCache();
 		List<ProducerBuilderCustomizer<Object>> lambdaSafeCustomizers = lambdaSafeProducerBuilderCustomizers(
 				customizersProvider);
-		return new CachingPulsarProducerFactory<>(pulsarClient, this.properties.getProducer().getTopicName(),
-				lambdaSafeCustomizers, topicResolver, cacheProperties.getExpireAfterAccess(),
-				cacheProperties.getMaximumSize(), cacheProperties.getInitialCapacity());
+		CachingPulsarProducerFactory<?> producerFactory = new CachingPulsarProducerFactory<>(pulsarClient,
+				this.properties.getProducer().getTopicName(), lambdaSafeCustomizers, topicResolver,
+				cacheProperties.getExpireAfterAccess(), cacheProperties.getMaximumSize(),
+				cacheProperties.getInitialCapacity());
+		topicBuilderProvider.ifAvailable(producerFactory::setTopicBuilder);
+		return producerFactory;
 	}
 
 	private List<ProducerBuilderCustomizer<Object>> lambdaSafeProducerBuilderCustomizers(
@@ -126,20 +136,34 @@ public class PulsarAutoConfiguration {
 	PulsarTemplate<?> pulsarTemplate(PulsarProducerFactory<?> pulsarProducerFactory,
 			ObjectProvider<ProducerInterceptor> producerInterceptors, SchemaResolver schemaResolver,
 			TopicResolver topicResolver) {
-		return new PulsarTemplate<>(pulsarProducerFactory, producerInterceptors.orderedStream().toList(),
-				schemaResolver, topicResolver, this.properties.getTemplate().isObservationsEnabled());
+		PulsarTemplate<?> template = new PulsarTemplate<>(pulsarProducerFactory,
+				producerInterceptors.orderedStream().toList(), schemaResolver, topicResolver,
+				this.properties.getTemplate().isObservationsEnabled());
+		this.propertiesMapper.customizeTemplate(template);
+		return template;
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(PulsarConsumerFactory.class)
 	DefaultPulsarConsumerFactory<?> pulsarConsumerFactory(PulsarClient pulsarClient,
-			ObjectProvider<ConsumerBuilderCustomizer<?>> customizersProvider) {
+			ObjectProvider<ConsumerBuilderCustomizer<?>> customizersProvider,
+			ObjectProvider<PulsarTopicBuilder> topicBuilderProvider) {
 		List<ConsumerBuilderCustomizer<?>> customizers = new ArrayList<>();
 		customizers.add(this.propertiesMapper::customizeConsumerBuilder);
 		customizers.addAll(customizersProvider.orderedStream().toList());
 		List<ConsumerBuilderCustomizer<Object>> lambdaSafeCustomizers = List
 			.of((builder) -> applyConsumerBuilderCustomizers(customizers, builder));
-		return new DefaultPulsarConsumerFactory<>(pulsarClient, lambdaSafeCustomizers);
+		DefaultPulsarConsumerFactory<?> consumerFactory = new DefaultPulsarConsumerFactory<>(pulsarClient,
+				lambdaSafeCustomizers);
+		topicBuilderProvider.ifAvailable(consumerFactory::setTopicBuilder);
+		return consumerFactory;
+	}
+
+	@Bean
+	@ConditionalOnMissingBean(PulsarAwareTransactionManager.class)
+	@ConditionalOnBooleanProperty("spring.pulsar.transaction.enabled")
+	public PulsarTransactionManager pulsarTransactionManager(PulsarClient pulsarClient) {
+		return new PulsarTransactionManager(pulsarClient);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -153,27 +177,36 @@ public class PulsarAutoConfiguration {
 	@ConditionalOnMissingBean(name = "pulsarListenerContainerFactory")
 	ConcurrentPulsarListenerContainerFactory<?> pulsarListenerContainerFactory(
 			PulsarConsumerFactory<Object> pulsarConsumerFactory, SchemaResolver schemaResolver,
-			TopicResolver topicResolver, Environment environment) {
+			TopicResolver topicResolver, ObjectProvider<PulsarAwareTransactionManager> pulsarTransactionManager,
+			Environment environment, PulsarContainerFactoryCustomizers containerFactoryCustomizers) {
 		PulsarContainerProperties containerProperties = new PulsarContainerProperties();
 		containerProperties.setSchemaResolver(schemaResolver);
 		containerProperties.setTopicResolver(topicResolver);
 		if (Threading.VIRTUAL.isActive(environment)) {
-			containerProperties.setConsumerTaskExecutor(new VirtualThreadTaskExecutor());
+			containerProperties.setConsumerTaskExecutor(new VirtualThreadTaskExecutor("pulsar-consumer-"));
 		}
+		pulsarTransactionManager.ifUnique(containerProperties.transactions()::setTransactionManager);
 		this.propertiesMapper.customizeContainerProperties(containerProperties);
-		return new ConcurrentPulsarListenerContainerFactory<>(pulsarConsumerFactory, containerProperties);
+		ConcurrentPulsarListenerContainerFactory<?> containerFactory = new ConcurrentPulsarListenerContainerFactory<>(
+				pulsarConsumerFactory, containerProperties);
+		containerFactoryCustomizers.customize(containerFactory);
+		return containerFactory;
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(PulsarReaderFactory.class)
 	DefaultPulsarReaderFactory<?> pulsarReaderFactory(PulsarClient pulsarClient,
-			ObjectProvider<ReaderBuilderCustomizer<?>> customizersProvider) {
+			ObjectProvider<ReaderBuilderCustomizer<?>> customizersProvider,
+			ObjectProvider<PulsarTopicBuilder> topicBuilderProvider) {
 		List<ReaderBuilderCustomizer<?>> customizers = new ArrayList<>();
 		customizers.add(this.propertiesMapper::customizeReaderBuilder);
 		customizers.addAll(customizersProvider.orderedStream().toList());
 		List<ReaderBuilderCustomizer<Object>> lambdaSafeCustomizers = List
 			.of((builder) -> applyReaderBuilderCustomizers(customizers, builder));
-		return new DefaultPulsarReaderFactory<>(pulsarClient, lambdaSafeCustomizers);
+		DefaultPulsarReaderFactory<?> readerFactory = new DefaultPulsarReaderFactory<>(pulsarClient,
+				lambdaSafeCustomizers);
+		topicBuilderProvider.ifAvailable(readerFactory::setTopicBuilder);
+		return readerFactory;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -185,14 +218,18 @@ public class PulsarAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean(name = "pulsarReaderContainerFactory")
 	DefaultPulsarReaderContainerFactory<?> pulsarReaderContainerFactory(PulsarReaderFactory<?> pulsarReaderFactory,
-			SchemaResolver schemaResolver, Environment environment) {
+			SchemaResolver schemaResolver, Environment environment,
+			PulsarContainerFactoryCustomizers containerFactoryCustomizers) {
 		PulsarReaderContainerProperties readerContainerProperties = new PulsarReaderContainerProperties();
 		readerContainerProperties.setSchemaResolver(schemaResolver);
 		if (Threading.VIRTUAL.isActive(environment)) {
-			readerContainerProperties.setReaderTaskExecutor(new VirtualThreadTaskExecutor());
+			readerContainerProperties.setReaderTaskExecutor(new VirtualThreadTaskExecutor("pulsar-reader-"));
 		}
 		this.propertiesMapper.customizeReaderContainerProperties(readerContainerProperties);
-		return new DefaultPulsarReaderContainerFactory<>(pulsarReaderFactory, readerContainerProperties);
+		DefaultPulsarReaderContainerFactory<?> containerFactory = new DefaultPulsarReaderContainerFactory<>(
+				pulsarReaderFactory, readerContainerProperties);
+		containerFactoryCustomizers.customize(containerFactory);
+		return containerFactory;
 	}
 
 	@Configuration(proxyBeanMethods = false)

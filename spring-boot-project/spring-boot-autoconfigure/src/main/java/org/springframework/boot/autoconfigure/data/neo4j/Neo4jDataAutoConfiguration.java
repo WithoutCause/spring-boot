@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ public class Neo4jDataAutoConfiguration {
 	public Neo4jTransactionManager transactionManager(Driver driver, DatabaseSelectionProvider databaseNameProvider,
 			ObjectProvider<TransactionManagerCustomizers> optionalCustomizers) {
 		Neo4jTransactionManager transactionManager = new Neo4jTransactionManager(driver, databaseNameProvider);
-		optionalCustomizers.ifAvailable((customizer) -> customizer.customize((TransactionManager) transactionManager));
+		optionalCustomizers.ifAvailable((customizer) -> customizer.customize(transactionManager));
 		return transactionManager;
 	}
 

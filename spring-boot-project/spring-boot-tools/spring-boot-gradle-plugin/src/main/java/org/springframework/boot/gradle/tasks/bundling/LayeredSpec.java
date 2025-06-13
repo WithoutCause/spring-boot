@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,17 +64,7 @@ public abstract class LayeredSpec {
 		this.application = objects.newInstance(ApplicationSpec.class);
 		this.dependencies = objects.newInstance(DependenciesSpec.class);
 		getEnabled().convention(true);
-		getIncludeLayerTools().convention(true);
 	}
-
-	/**
-	 * Returns whether the layer tools should be included as a dependency in the layered
-	 * archive.
-	 * @return whether the layer tools should be included
-	 * @since 3.0.0
-	 */
-	@Input
-	public abstract Property<Boolean> getIncludeLayerTools();
 
 	/**
 	 * Returns whether the layers.idx should be included in the archive.

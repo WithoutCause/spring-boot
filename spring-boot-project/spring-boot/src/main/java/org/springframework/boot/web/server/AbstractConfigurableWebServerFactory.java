@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,13 @@ import java.net.InetAddress;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
+import org.springframework.boot.web.server.Ssl.ServerNameSslBundle;
 import org.springframework.util.Assert;
 
 /**
@@ -113,13 +116,13 @@ public abstract class AbstractConfigurableWebServerFactory implements Configurab
 
 	@Override
 	public void setErrorPages(Set<? extends ErrorPage> errorPages) {
-		Assert.notNull(errorPages, "ErrorPages must not be null");
+		Assert.notNull(errorPages, "'errorPages' must not be null");
 		this.errorPages = new LinkedHashSet<>(errorPages);
 	}
 
 	@Override
 	public void addErrorPages(ErrorPage... errorPages) {
-		Assert.notNull(errorPages, "ErrorPages must not be null");
+		Assert.notNull(errorPages, "'errorPages' must not be null");
 		this.errorPages.addAll(Arrays.asList(errorPages));
 	}
 
@@ -193,6 +196,13 @@ public abstract class AbstractConfigurableWebServerFactory implements Configurab
 	 */
 	protected final SslBundle getSslBundle() {
 		return WebServerSslBundle.get(this.ssl, this.sslBundles);
+	}
+
+	protected final Map<String, SslBundle> getServerNameSslBundles() {
+		return this.ssl.getServerNameBundles()
+			.stream()
+			.collect(Collectors.toMap(ServerNameSslBundle::serverName,
+					(serverNameSslBundle) -> this.sslBundles.getBundle(serverNameSslBundle.bundle())));
 	}
 
 	/**

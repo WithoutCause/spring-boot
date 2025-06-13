@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,8 @@ import org.springframework.test.util.ReflectionTestUtils;
  *
  * @author Arjen Poutsma
  */
-@ClassPathExclusions({ "httpclient5-*.jar", "okhttp-*.jar" })
+@ClassPathExclusions("httpclient5-*.jar")
+@SuppressWarnings("removal")
 class ClientHttpRequestFactoriesJettyTests
 		extends AbstractClientHttpRequestFactoriesTests<JettyClientHttpRequestFactory> {
 
@@ -43,6 +44,16 @@ class ClientHttpRequestFactoriesJettyTests
 	@Override
 	protected long readTimeout(JettyClientHttpRequestFactory requestFactory) {
 		return (long) ReflectionTestUtils.getField(requestFactory, "readTimeout");
+	}
+
+	@Override
+	protected boolean supportsSettingConnectTimeout() {
+		return true;
+	}
+
+	@Override
+	protected boolean supportsSettingReadTimeout() {
+		return true;
 	}
 
 }

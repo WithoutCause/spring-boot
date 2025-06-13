@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package org.springframework.boot.system;
 
 import java.io.Console;
+import java.io.Reader;
+import java.text.NumberFormat;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -64,15 +66,33 @@ public enum JavaVersion {
 	 * Java 21.
 	 * @since 2.7.16
 	 */
-	TWENTY_ONE("21", SortedSet.class, "getFirst");
+	TWENTY_ONE("21", SortedSet.class, "getFirst"),
+
+	/**
+	 * Java 22.
+	 * @since 3.2.4
+	 */
+	TWENTY_TWO("22", Console.class, "isTerminal"),
+
+	/**
+	 * Java 23.
+	 * @since 3.2.9
+	 */
+	TWENTY_THREE("23", NumberFormat.class, "isStrict"),
+
+	/**
+	 * Java 24.
+	 * @since 3.4.3
+	 */
+	TWENTY_FOUR("24", Reader.class, "of", CharSequence.class);
 
 	private final String name;
 
 	private final boolean available;
 
-	JavaVersion(String name, Class<?> clazz, String methodName) {
+	JavaVersion(String name, Class<?> versionSpecificClass, String versionSpecificMethod, Class<?>... paramTypes) {
 		this.name = name;
-		this.available = ClassUtils.hasMethod(clazz, methodName);
+		this.available = ClassUtils.hasMethod(versionSpecificClass, versionSpecificMethod, paramTypes);
 	}
 
 	@Override

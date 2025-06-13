@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.util.List;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler;
+import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler.IgnoredMeters;
 import io.micrometer.core.instrument.observation.MeterObservationHandler;
 import io.micrometer.observation.GlobalObservationConvention;
 import io.micrometer.observation.Observation;
@@ -39,6 +40,7 @@ import org.springframework.boot.actuate.autoconfigure.tracing.MicrometerTracingA
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
@@ -131,8 +133,10 @@ public class ObservationAutoConfiguration {
 		static class OnlyMetricsMeterObservationHandlerConfiguration {
 
 			@Bean
-			DefaultMeterObservationHandler defaultMeterObservationHandler(MeterRegistry meterRegistry) {
-				return new DefaultMeterObservationHandler(meterRegistry);
+			DefaultMeterObservationHandler defaultMeterObservationHandler(MeterRegistry meterRegistry,
+					ObservationProperties properties) {
+				return properties.getLongTaskTimer().isEnabled() ? new DefaultMeterObservationHandler(meterRegistry)
+						: new DefaultMeterObservationHandler(meterRegistry, IgnoredMeters.LONG_TASK_TIMER);
 			}
 
 		}
@@ -143,8 +147,10 @@ public class ObservationAutoConfiguration {
 
 			@Bean
 			TracingAwareMeterObservationHandler<Observation.Context> tracingAwareMeterObservationHandler(
-					MeterRegistry meterRegistry, Tracer tracer) {
-				DefaultMeterObservationHandler delegate = new DefaultMeterObservationHandler(meterRegistry);
+					MeterRegistry meterRegistry, Tracer tracer, ObservationProperties properties) {
+				DefaultMeterObservationHandler delegate = properties.getLongTaskTimer().isEnabled()
+						? new DefaultMeterObservationHandler(meterRegistry)
+						: new DefaultMeterObservationHandler(meterRegistry, IgnoredMeters.LONG_TASK_TIMER);
 				return new TracingAwareMeterObservationHandler<>(delegate, tracer);
 			}
 
@@ -154,6 +160,7 @@ public class ObservationAutoConfiguration {
 
 	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnClass(Advice.class)
+	@ConditionalOnBooleanProperty("management.observations.annotations.enabled")
 	static class ObservedAspectConfiguration {
 
 		@Bean

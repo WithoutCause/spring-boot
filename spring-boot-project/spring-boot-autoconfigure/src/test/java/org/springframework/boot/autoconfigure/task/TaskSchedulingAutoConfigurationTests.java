@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,13 +36,12 @@ import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.task.SimpleAsyncTaskSchedulerBuilder;
 import org.springframework.boot.task.SimpleAsyncTaskSchedulerCustomizer;
-import org.springframework.boot.task.TaskSchedulerBuilder;
-import org.springframework.boot.task.TaskSchedulerCustomizer;
 import org.springframework.boot.task.ThreadPoolTaskSchedulerBuilder;
 import org.springframework.boot.task.ThreadPoolTaskSchedulerCustomizer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -52,6 +51,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Tests for {@link TaskSchedulingAutoConfiguration}.
@@ -59,7 +59,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Stephane Nicoll
  * @author Moritz Halbritter
  */
-@SuppressWarnings("removal")
 class TaskSchedulingAutoConfigurationTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
@@ -80,21 +79,9 @@ class TaskSchedulingAutoConfigurationTests {
 	@Test
 	void shouldSupplyBeans() {
 		this.contextRunner.withUserConfiguration(SchedulingConfiguration.class).run((context) -> {
-			assertThat(context).hasSingleBean(TaskSchedulerBuilder.class);
 			assertThat(context).hasSingleBean(ThreadPoolTaskSchedulerBuilder.class);
 			assertThat(context).hasSingleBean(ThreadPoolTaskScheduler.class);
 		});
-	}
-
-	@Test
-	void shouldNotSupplyThreadPoolTaskSchedulerBuilderIfCustomTaskSchedulerBuilderIsPresent() {
-		this.contextRunner.withUserConfiguration(SchedulingConfiguration.class)
-			.withBean(TaskSchedulerBuilder.class, TaskSchedulerBuilder::new)
-			.run((context) -> {
-				assertThat(context).hasSingleBean(TaskSchedulerBuilder.class);
-				assertThat(context).doesNotHaveBean(ThreadPoolTaskSchedulerBuilder.class);
-				assertThat(context).hasSingleBean(ThreadPoolTaskScheduler.class);
-			});
 	}
 
 	@Test
@@ -155,7 +142,30 @@ class TaskSchedulingAutoConfigurationTests {
 	}
 
 	@Test
-	@SuppressWarnings("unchecked")
+	void simpleAsyncTaskSchedulerBuilderShouldApplyTaskDecorator() {
+		this.contextRunner.withUserConfiguration(SchedulingConfiguration.class, TaskDecoratorConfig.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(SimpleAsyncTaskSchedulerBuilder.class);
+				assertThat(context).hasSingleBean(TaskDecorator.class);
+				TaskDecorator taskDecorator = context.getBean(TaskDecorator.class);
+				SimpleAsyncTaskSchedulerBuilder builder = context.getBean(SimpleAsyncTaskSchedulerBuilder.class);
+				assertThat(builder).extracting("taskDecorator").isSameAs(taskDecorator);
+			});
+	}
+
+	@Test
+	void threadPoolTaskSchedulerBuilderShouldApplyTaskDecorator() {
+		this.contextRunner.withUserConfiguration(SchedulingConfiguration.class, TaskDecoratorConfig.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(ThreadPoolTaskSchedulerBuilder.class);
+				assertThat(context).hasSingleBean(TaskDecorator.class);
+				TaskDecorator taskDecorator = context.getBean(TaskDecorator.class);
+				ThreadPoolTaskSchedulerBuilder builder = context.getBean(ThreadPoolTaskSchedulerBuilder.class);
+				assertThat(builder).extracting("taskDecorator").isSameAs(taskDecorator);
+			});
+	}
+
+	@Test
 	void simpleAsyncTaskSchedulerBuilderShouldApplyCustomizers() {
 		SimpleAsyncTaskSchedulerCustomizer customizer = (scheduler) -> {
 		};
@@ -167,18 +177,6 @@ class TaskSchedulingAutoConfigurationTests {
 				assertThat(builder).extracting("customizers")
 					.asInstanceOf(InstanceOfAssertFactories.collection(SimpleAsyncTaskSchedulerCustomizer.class))
 					.containsExactly(customizer);
-			});
-	}
-
-	@Test
-	void enableSchedulingWithNoTaskExecutorAppliesTaskSchedulerCustomizers() {
-		this.contextRunner.withPropertyValues("spring.task.scheduling.thread-name-prefix=scheduling-test-")
-			.withUserConfiguration(SchedulingConfiguration.class, TaskSchedulerCustomizerConfiguration.class)
-			.run((context) -> {
-				assertThat(context).hasSingleBean(TaskExecutor.class);
-				TestBean bean = context.getBean(TestBean.class);
-				assertThat(bean.latch.await(30, TimeUnit.SECONDS)).isTrue();
-				assertThat(bean.threadNames).allMatch((name) -> name.contains("customized-scheduler-"));
 			});
 	}
 
@@ -263,16 +261,6 @@ class TaskSchedulingAutoConfigurationTests {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	static class TaskSchedulerCustomizerConfiguration {
-
-		@Bean
-		TaskSchedulerCustomizer testTaskSchedulerCustomizer() {
-			return ((taskScheduler) -> taskScheduler.setThreadNamePrefix("customized-scheduler-"));
-		}
-
-	}
-
-	@Configuration(proxyBeanMethods = false)
 	static class ThreadPoolTaskSchedulerCustomizerConfiguration {
 
 		@Bean
@@ -339,6 +327,16 @@ class TaskSchedulingAutoConfigurationTests {
 			setPoolSize(1);
 			setThreadNamePrefix("test-");
 			afterPropertiesSet();
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class TaskDecoratorConfig {
+
+		@Bean
+		TaskDecorator mockTaskDecorator() {
+			return mock(TaskDecorator.class);
 		}
 
 	}

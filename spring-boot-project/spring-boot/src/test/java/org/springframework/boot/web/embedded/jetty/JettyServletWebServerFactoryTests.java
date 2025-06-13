@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EventListener;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -44,7 +45,6 @@ import org.awaitility.Awaitility;
 import org.eclipse.jetty.ee10.servlet.ErrorPageErrorHandler;
 import org.eclipse.jetty.ee10.servlet.ServletHolder;
 import org.eclipse.jetty.ee10.webapp.AbstractConfiguration;
-import org.eclipse.jetty.ee10.webapp.ClassMatcher;
 import org.eclipse.jetty.ee10.webapp.Configuration;
 import org.eclipse.jetty.ee10.webapp.WebAppContext;
 import org.eclipse.jetty.server.AbstractConnector;
@@ -54,6 +54,7 @@ import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.SslConnectionFactory;
+import org.eclipse.jetty.util.ClassMatcher;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.util.thread.ThreadPool;
@@ -61,12 +62,15 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
+import org.springframework.boot.testsupport.classpath.resources.ResourcePath;
+import org.springframework.boot.testsupport.classpath.resources.WithPackageResources;
 import org.springframework.boot.testsupport.system.CapturedOutput;
 import org.springframework.boot.web.server.Compression;
 import org.springframework.boot.web.server.GracefulShutdownResult;
 import org.springframework.boot.web.server.PortInUseException;
 import org.springframework.boot.web.server.Shutdown;
 import org.springframework.boot.web.server.Ssl;
+import org.springframework.boot.web.server.Ssl.ServerNameSslBundle;
 import org.springframework.boot.web.server.WebServerException;
 import org.springframework.boot.web.servlet.server.AbstractServletWebServerFactory;
 import org.springframework.boot.web.servlet.server.AbstractServletWebServerFactoryTests;
@@ -74,6 +78,7 @@ import org.springframework.util.ReflectionUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
@@ -193,8 +198,8 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 	Configuration mockConfiguration(Class<? extends Configuration> type) {
 		Configuration mock = mock(type);
 		ClassMatcher classMatcher = new ClassMatcher();
-		given(mock.getSystemClasses()).willReturn(classMatcher);
-		given(mock.getServerClasses()).willReturn(classMatcher);
+		given(mock.getProtectedClasses()).willReturn(classMatcher);
+		given(mock.getHiddenClasses()).willReturn(classMatcher);
 		return mock;
 	}
 
@@ -227,9 +232,10 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 	}
 
 	@Test
-	void sslCiphersConfiguration() {
+	@WithPackageResources("test.jks")
+	void sslCiphersConfiguration(@ResourcePath("test.jks") String keyStore) {
 		Ssl ssl = new Ssl();
-		ssl.setKeyStore("src/test/resources/test.jks");
+		ssl.setKeyStore(keyStore);
 		ssl.setKeyStorePassword("secret");
 		ssl.setKeyPassword("password");
 		ssl.setCiphers(new String[] { "ALPHA", "BRAVO", "CHARLIE" });
@@ -258,9 +264,10 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 	}
 
 	@Test
-	void sslEnabledMultiProtocolsConfiguration() {
+	@WithPackageResources("test.jks")
+	void sslEnabledMultiProtocolsConfiguration(@ResourcePath("test.jks") String keyStore) {
 		JettyServletWebServerFactory factory = getFactory();
-		factory.setSsl(getSslSettings("TLSv1.1", "TLSv1.2"));
+		factory.setSsl(getSslSettings(keyStore, "TLSv1.1", "TLSv1.2"));
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		JettyWebServer jettyWebServer = (JettyWebServer) this.webServer;
@@ -271,9 +278,10 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 	}
 
 	@Test
-	void sslEnabledProtocolsConfiguration() {
+	@WithPackageResources("test.jks")
+	void sslEnabledProtocolsConfiguration(@ResourcePath("test.jks") String keyStore) {
 		JettyServletWebServerFactory factory = getFactory();
-		factory.setSsl(getSslSettings("TLSv1.1"));
+		factory.setSsl(getSslSettings(keyStore, "TLSv1.1"));
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		JettyWebServer jettyWebServer = (JettyWebServer) this.webServer;
@@ -281,6 +289,19 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 		SslConnectionFactory connectionFactory = connector.getConnectionFactory(SslConnectionFactory.class);
 		SslContextFactory sslContextFactory = extractSslContextFactory(connectionFactory);
 		assertThat(sslContextFactory.getIncludeProtocols()).containsExactly("TLSv1.1");
+	}
+
+	@Test
+	void sslServerNameBundlesConfigurationThrowsException() {
+		Ssl ssl = new Ssl();
+		ssl.setBundle("test");
+		List<ServerNameSslBundle> bundles = List.of(new ServerNameSslBundle("first", "test1"),
+				new ServerNameSslBundle("second", "test2"));
+		ssl.setServerNameBundles(bundles);
+		JettyServletWebServerFactory factory = getFactory();
+		factory.setSsl(ssl);
+		assertThatIllegalStateException().isThrownBy(() -> this.webServer = factory.getWebServer())
+			.withMessageContaining("Server name SSL bundles are not supported with Jetty");
 	}
 
 	private SslContextFactory extractSslContextFactory(SslConnectionFactory connectionFactory) {
@@ -377,9 +398,9 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 		assertThat(((HttpResponse) requestResult).getFirstHeader("Connection").getValue()).isEqualTo("close");
 	}
 
-	private Ssl getSslSettings(String... enabledProtocols) {
+	private Ssl getSslSettings(String keyStore, String... enabledProtocols) {
 		Ssl ssl = new Ssl();
-		ssl.setKeyStore("src/test/resources/test.jks");
+		ssl.setKeyStore(keyStore);
 		ssl.setKeyStorePassword("secret");
 		ssl.setKeyPassword("password");
 		ssl.setCiphers(new String[] { "ALPHA", "BRAVO", "CHARLIE" });
@@ -410,6 +431,7 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 	}
 
 	@Test
+	@WithPackageResources("test.jks")
 	void basicSslClasspathKeyStore() throws Exception {
 		testBasicSslWithKeyStore("classpath:test.jks");
 	}
@@ -463,12 +485,13 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 	}
 
 	@Test
+	@WithPackageResources("test.jks")
 	void specificIPAddressWithSslIsNotReverseResolved() throws Exception {
 		JettyServletWebServerFactory factory = getFactory();
 		InetAddress localhost = InetAddress.getLocalHost();
 		factory.setAddress(InetAddress.getByAddress(localhost.getAddress()));
 		Ssl ssl = new Ssl();
-		ssl.setKeyStore("src/test/resources/test.jks");
+		ssl.setKeyStore("classpath:test.jks");
 		ssl.setKeyStorePassword("secret");
 		ssl.setKeyPassword("password");
 		factory.setSsl(ssl);
@@ -545,7 +568,7 @@ class JettyServletWebServerFactoryTests extends AbstractServletWebServerFactoryT
 	}
 
 	@Test
-	void shouldApplyingMaxConnectionUseConnector() throws Exception {
+	void shouldApplyMaxConnectionsToConnectors() {
 		JettyServletWebServerFactory factory = getFactory();
 		factory.setMaxConnections(1);
 		this.webServer = factory.getWebServer();

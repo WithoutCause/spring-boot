@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@ package org.springframework.boot.autoconfigure.web.reactive.error;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 
 import org.springframework.boot.autoconfigure.web.ErrorProperties;
 import org.springframework.boot.autoconfigure.web.WebProperties.Resources;
+import org.springframework.boot.testsupport.classpath.resources.WithResource;
 import org.springframework.boot.web.reactive.context.AnnotationConfigReactiveWebApplicationContext;
 import org.springframework.boot.web.reactive.error.ErrorAttributes;
 import org.springframework.context.ApplicationContext;
@@ -53,9 +53,19 @@ import static org.mockito.Mockito.mock;
 class DefaultErrorWebExceptionHandlerTests {
 
 	@Test
+	@WithResource(name = "templates/error/error.mustache", content = """
+			<html>
+			<body>
+			<ul>
+				<li>status: {{status}}</li>
+				<li>message: {{message}}</li>
+			</ul>
+			</body>
+			</html>
+			""")
 	void nonStandardErrorStatusCodeShouldNotFail() {
 		ErrorAttributes errorAttributes = mock(ErrorAttributes.class);
-		given(errorAttributes.getErrorAttributes(any(), any())).willReturn(getErrorAttributes());
+		given(errorAttributes.getErrorAttributes(any(), any())).willReturn(Collections.singletonMap("status", 498));
 		Resources resourceProperties = new Resources();
 		ErrorProperties errorProperties = new ErrorProperties();
 		ApplicationContext context = new AnnotationConfigReactiveWebApplicationContext();
@@ -65,10 +75,6 @@ class DefaultErrorWebExceptionHandlerTests {
 		ServerWebExchange exchange = MockServerWebExchange
 			.from(MockServerHttpRequest.get("/some-other-path").accept(MediaType.TEXT_HTML));
 		exceptionHandler.handle(exchange, new RuntimeException()).block();
-	}
-
-	private Map<String, Object> getErrorAttributes() {
-		return Collections.singletonMap("status", 498);
 	}
 
 	private void setupViewResolver(DefaultErrorWebExceptionHandler exceptionHandler) {

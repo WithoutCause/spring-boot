@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,9 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
  * @author Andy Wilkinson
  * @since 1.3.3
  */
-@Conditional({ OnEnabledDevToolsCondition.class, DevToolsDataSourceCondition.class })
+@ConditionalOnClass(DataSource.class)
+@ConditionalOnEnabledDevTools
+@Conditional(DevToolsDataSourceCondition.class)
 @AutoConfiguration(after = DataSourceAutoConfiguration.class)
 @Import(DatabaseShutdownExecutorEntityManagerFactoryDependsOnPostProcessor.class)
 public class DevToolsDataSourceAutoConfiguration {

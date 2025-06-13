@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.springframework.boot.docker.compose.core;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,6 +27,7 @@ import org.springframework.util.FileCopyUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 /**
  * Tests for {@link DockerComposeFile}.
@@ -49,7 +51,7 @@ class DockerComposeFileTests {
 		DockerComposeFile c2 = DockerComposeFile.of(f1);
 		DockerComposeFile c3 = DockerComposeFile.find(f1.getParentFile());
 		DockerComposeFile c4 = DockerComposeFile.of(f2);
-		assertThat(c1.hashCode()).isEqualTo(c2.hashCode()).isEqualTo(c3.hashCode());
+		assertThat(c1).hasSameHashCodeAs(c2).hasSameHashCodeAs(c3);
 		assertThat(c1).isEqualTo(c1).isEqualTo(c2).isEqualTo(c3).isNotEqualTo(c4);
 	}
 
@@ -60,21 +62,29 @@ class DockerComposeFileTests {
 	}
 
 	@Test
+	void toStringReturnsFileNameList() throws Exception {
+		File file1 = createTempFile("1.yml");
+		File file2 = createTempFile("2.yml");
+		DockerComposeFile composeFile = DockerComposeFile.of(List.of(file1, file2));
+		assertThat(composeFile).hasToString(file1 + ", " + file2);
+	}
+
+	@Test
 	void findFindsSingleFile() throws Exception {
-		File file = new File(this.temp, "docker-compose.yml");
+		File file = new File(this.temp, "docker-compose.yml").getCanonicalFile();
 		FileCopyUtils.copy(new byte[0], file);
 		DockerComposeFile composeFile = DockerComposeFile.find(file.getParentFile());
-		assertThat(composeFile.toString()).endsWith(File.separator + "docker-compose.yml");
+		assertThat(composeFile.getFiles()).containsExactly(file);
 	}
 
 	@Test
 	void findWhenMultipleFilesPicksBest() throws Exception {
-		File f1 = new File(this.temp, "docker-compose.yml");
+		File f1 = new File(this.temp, "docker-compose.yml").getCanonicalFile();
 		FileCopyUtils.copy(new byte[0], f1);
-		File f2 = new File(this.temp, "compose.yml");
+		File f2 = new File(this.temp, "compose.yml").getCanonicalFile();
 		FileCopyUtils.copy(new byte[0], f2);
 		DockerComposeFile composeFile = DockerComposeFile.find(f1.getParentFile());
-		assertThat(composeFile.toString()).endsWith(File.separator + "compose.yml");
+		assertThat(composeFile.getFiles()).containsExactly(f2);
 	}
 
 	@Test
@@ -94,44 +104,55 @@ class DockerComposeFileTests {
 
 	@Test
 	void findWhenWorkingDirectoryIsNotDirectoryThrowsException() throws Exception {
-		File file = new File(this.temp, "iamafile");
-		FileCopyUtils.copy(new byte[0], file);
-		assertThatIllegalArgumentException().isThrownBy(() -> DockerComposeFile.find(file))
+		File file = createTempFile("iamafile");
+		assertThatIllegalStateException().isThrownBy(() -> DockerComposeFile.find(file))
 			.withMessageEndingWith("is not a directory");
 	}
 
 	@Test
 	void ofReturnsDockerComposeFile() throws Exception {
-		File file = new File(this.temp, "anyfile.yml");
-		FileCopyUtils.copy(new byte[0], file);
+		File file = createTempFile("compose.yml");
 		DockerComposeFile composeFile = DockerComposeFile.of(file);
 		assertThat(composeFile).isNotNull();
-		assertThat(composeFile).hasToString(file.getCanonicalPath());
+		assertThat(composeFile.getFiles()).containsExactly(file);
+	}
+
+	@Test
+	void ofWithMultipleFilesReturnsDockerComposeFile() throws Exception {
+		File file1 = createTempFile("1.yml");
+		File file2 = createTempFile("2.yml");
+		DockerComposeFile composeFile = DockerComposeFile.of(List.of(file1, file2));
+		assertThat(composeFile).isNotNull();
+		assertThat(composeFile.getFiles()).containsExactly(file1, file2);
 	}
 
 	@Test
 	void ofWhenFileIsNullThrowsException() {
-		assertThatIllegalArgumentException().isThrownBy(() -> DockerComposeFile.of(null))
-			.withMessage("File must not be null");
+		assertThatIllegalArgumentException().isThrownBy(() -> DockerComposeFile.of((File) null))
+			.withMessage("'file' must not be null");
 	}
 
 	@Test
 	void ofWhenFileDoesNotExistThrowsException() {
 		File file = new File(this.temp, "missing");
 		assertThatIllegalArgumentException().isThrownBy(() -> DockerComposeFile.of(file))
-			.withMessageEndingWith("does not exist");
+			.withMessageEndingWith("must exist");
 	}
 
 	@Test
 	void ofWhenFileIsNotFileThrowsException() {
 		assertThatIllegalArgumentException().isThrownBy(() -> DockerComposeFile.of(this.temp))
-			.withMessageEndingWith("is not a file");
+			.withMessageEndingWith("must be a normal file");
 	}
 
 	private DockerComposeFile createComposeFile(String name) throws IOException {
+		return DockerComposeFile.of(createTempFile(name));
+	}
+
+	private File createTempFile(String name) throws IOException {
 		File file = new File(this.temp, name);
 		FileCopyUtils.copy(new byte[0], file);
-		return DockerComposeFile.of(file);
+		return file.getCanonicalFile();
 	}
 
 }

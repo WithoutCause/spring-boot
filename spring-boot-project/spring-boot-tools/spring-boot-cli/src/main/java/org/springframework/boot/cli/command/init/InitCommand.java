@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -165,7 +165,7 @@ public class InitCommand extends OptionParsingCommand {
 			this.packaging = option(Arrays.asList("packaging", "p"), "Project packaging (for example 'jar')")
 				.withRequiredArg();
 			this.build = option("build", "Build system to use (for example 'maven' or 'gradle')").withRequiredArg()
-				.defaultsTo("maven");
+				.defaultsTo("gradle");
 			this.format = option("format", "Format of the generated content (for example 'build' for a build file, "
 					+ "'project' for a project archive)")
 				.withRequiredArg()
@@ -220,7 +220,7 @@ public class InitCommand extends OptionParsingCommand {
 
 		protected ProjectGenerationRequest createProjectGenerationRequest(OptionSet options) {
 			List<?> nonOptionArguments = new ArrayList<Object>(options.nonOptionArguments());
-			Assert.isTrue(nonOptionArguments.size() <= 1, "Only the target location may be specified");
+			Assert.state(nonOptionArguments.size() <= 1, "Only the target location may be specified");
 			ProjectGenerationRequest request = new ProjectGenerationRequest();
 			request.setServiceUrl(options.valueOf(this.target));
 			if (options.has(this.bootVersion)) {

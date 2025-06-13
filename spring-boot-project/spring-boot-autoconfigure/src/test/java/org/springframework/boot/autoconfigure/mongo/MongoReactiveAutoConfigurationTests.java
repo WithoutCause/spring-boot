@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.ssl.SslAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.testsupport.classpath.resources.WithPackageResources;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -88,11 +89,12 @@ class MongoReactiveAutoConfigurationTests {
 		this.contextRunner.withPropertyValues("spring.data.mongodb.ssl.enabled=true").run((context) -> {
 			SslSettings sslSettings = getSettings(context).getSslSettings();
 			assertThat(sslSettings.isEnabled()).isTrue();
-			assertThat(sslSettings.getContext()).isNull();
+			assertThat(sslSettings.getContext()).isNotNull();
 		});
 	}
 
 	@Test
+	@WithPackageResources("test.jks")
 	void configuresSslWithBundle() {
 		this.contextRunner
 			.withPropertyValues("spring.data.mongodb.ssl.bundle=test-bundle",
@@ -230,7 +232,6 @@ class MongoReactiveAutoConfigurationTests {
 				assertThat(settings.getApplicationName()).isEqualTo("custom-transport-settings");
 				assertThat(settings.getTransportSettings())
 					.isSameAs(SimpleTransportSettingsCustomizerConfig.transportSettings);
-				assertThat(settings.getStreamFactoryFactory()).isNull();
 			});
 	}
 
@@ -251,6 +252,12 @@ class MongoReactiveAutoConfigurationTests {
 		})
 			.run((context) -> assertThat(context).hasSingleBean(MongoConnectionDetails.class)
 				.doesNotHaveBean(PropertiesMongoConnectionDetails.class));
+	}
+
+	@Test
+	void uuidRepresentationDefaultsAreAligned() {
+		this.contextRunner.run((context) -> assertThat(getSettings(context).getUuidRepresentation())
+			.isEqualTo(new MongoProperties().getUuidRepresentation()));
 	}
 
 	private MongoClientSettings getSettings(ApplicationContext context) {

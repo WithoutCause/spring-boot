@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.springframework.boot.buildpack.platform.docker.type;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.invoke.MethodHandles;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -27,11 +26,13 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import org.springframework.boot.buildpack.platform.json.MappedObject;
+import org.springframework.util.StringUtils;
 
 /**
  * Image details as returned from {@code Docker inspect}.
  *
  * @author Phillip Webb
+ * @author Scott Frederick
  * @since 2.3.0
  */
 public class Image extends MappedObject {
@@ -44,24 +45,21 @@ public class Image extends MappedObject {
 
 	private final String os;
 
+	private final String architecture;
+
+	private final String variant;
+
 	private final String created;
 
 	Image(JsonNode node) {
 		super(node, MethodHandles.lookup());
-		this.digests = getDigests(getNode().at("/RepoDigests"));
+		this.digests = childrenAt("/RepoDigests", JsonNode::asText);
 		this.config = new ImageConfig(getNode().at("/Config"));
 		this.layers = extractLayers(valueAt("/RootFS/Layers", String[].class));
 		this.os = valueAt("/Os", String.class);
+		this.architecture = valueAt("/Architecture", String.class);
+		this.variant = valueAt("/Variant", String.class);
 		this.created = valueAt("/Created", String.class);
-	}
-
-	private List<String> getDigests(JsonNode node) {
-		if (node.isEmpty()) {
-			return Collections.emptyList();
-		}
-		List<String> digests = new ArrayList<>();
-		node.forEach((child) -> digests.add(child.asText()));
-		return Collections.unmodifiableList(digests);
 	}
 
 	private List<LayerId> extractLayers(String[] layers) {
@@ -100,7 +98,23 @@ public class Image extends MappedObject {
 	 * @return the image OS
 	 */
 	public String getOs() {
-		return (this.os != null) ? this.os : "linux";
+		return (StringUtils.hasText(this.os)) ? this.os : "linux";
+	}
+
+	/**
+	 * Return the architecture of the image.
+	 * @return the image architecture
+	 */
+	public String getArchitecture() {
+		return this.architecture;
+	}
+
+	/**
+	 * Return the variant of the image.
+	 * @return the image variant
+	 */
+	public String getVariant() {
+		return this.variant;
 	}
 
 	/**

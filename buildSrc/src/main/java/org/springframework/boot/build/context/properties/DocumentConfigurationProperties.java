@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
 
 package org.springframework.boot.build.context.properties;
 
-import java.io.File;
 import java.io.IOException;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Task;
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.OutputDirectory;
@@ -36,11 +36,9 @@ import org.springframework.boot.build.context.properties.Snippet.Config;
  * @author Andy Wilkinson
  * @author Phillip Webb
  */
-public class DocumentConfigurationProperties extends DefaultTask {
+public abstract class DocumentConfigurationProperties extends DefaultTask {
 
 	private FileCollection configurationPropertyMetadata;
-
-	private File outputDir;
 
 	@InputFiles
 	@PathSensitive(PathSensitivity.RELATIVE)
@@ -53,13 +51,7 @@ public class DocumentConfigurationProperties extends DefaultTask {
 	}
 
 	@OutputDirectory
-	public File getOutputDir() {
-		return this.outputDir;
-	}
-
-	public void setOutputDir(File outputDir) {
-		this.outputDir = outputDir;
-	}
+	public abstract DirectoryProperty getOutputDir();
 
 	@TaskAction
 	void documentConfigurationProperties() throws IOException {
@@ -83,7 +75,7 @@ public class DocumentConfigurationProperties extends DefaultTask {
 		snippets.add("application-properties.testcontainers", "Testcontainers Properties",
 				this::testcontainersPrefixes);
 		snippets.add("application-properties.testing", "Testing Properties", this::testingPrefixes);
-		snippets.writeTo(this.outputDir.toPath());
+		snippets.writeTo(getOutputDir().getAsFile().get().toPath());
 	}
 
 	private void corePrefixes(Config config) {
@@ -95,7 +87,6 @@ public class DocumentConfigurationProperties extends DefaultTask {
 		config.accept("spring.autoconfigure");
 		config.accept("spring.banner");
 		config.accept("spring.beaninfo");
-		config.accept("spring.codec");
 		config.accept("spring.config");
 		config.accept("spring.info");
 		config.accept("spring.jmx");
@@ -109,6 +100,7 @@ public class DocumentConfigurationProperties extends DefaultTask {
 		config.accept("spring.ssl");
 		config.accept("spring.task");
 		config.accept("spring.threads");
+		config.accept("spring.validation");
 		config.accept("spring.mandatory-file-encoding");
 		config.accept("info");
 		config.accept("spring.output.ansi.enabled");
@@ -198,7 +190,6 @@ public class DocumentConfigurationProperties extends DefaultTask {
 		prefix.accept("spring.groovy");
 		prefix.accept("spring.mustache");
 		prefix.accept("spring.thymeleaf");
-		prefix.accept("spring.groovy.template.configuration", "See GroovyMarkupConfigurer");
 	}
 
 	private void serverPrefixes(Config prefix) {

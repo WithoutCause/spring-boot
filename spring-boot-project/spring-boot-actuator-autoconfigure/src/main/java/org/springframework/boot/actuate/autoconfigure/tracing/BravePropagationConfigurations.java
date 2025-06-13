@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,13 +30,12 @@ import brave.context.slf4j.MDCScopeDecorator;
 import brave.propagation.CurrentTraceContext.ScopeDecorator;
 import brave.propagation.Propagation;
 import brave.propagation.Propagation.Factory;
-import brave.propagation.Propagation.KeyFactory;
 import io.micrometer.tracing.brave.bridge.BraveBaggageManager;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.actuate.autoconfigure.tracing.TracingProperties.Baggage.Correlation;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -53,7 +52,7 @@ class BravePropagationConfigurations {
 	 * Propagates traces but no baggage.
 	 */
 	@Configuration(proxyBeanMethods = false)
-	@ConditionalOnProperty(value = "management.tracing.baggage.enabled", havingValue = "false")
+	@ConditionalOnBooleanProperty(name = "management.tracing.baggage.enabled", havingValue = false)
 	static class PropagationWithoutBaggage {
 
 		@Bean
@@ -69,7 +68,7 @@ class BravePropagationConfigurations {
 	 * Propagates traces and baggage.
 	 */
 	@Configuration(proxyBeanMethods = false)
-	@ConditionalOnProperty(value = "management.tracing.baggage.enabled", matchIfMissing = true)
+	@ConditionalOnBooleanProperty(name = "management.tracing.baggage.enabled", matchIfMissing = true)
 	@EnableConfigurationProperties(TracingProperties.class)
 	static class PropagationWithBaggage {
 
@@ -92,19 +91,19 @@ class BravePropagationConfigurations {
 				.forEach((customizer) -> customizer.customize(throwAwayBuilder));
 			CompositePropagationFactory propagationFactory = CompositePropagationFactory.create(
 					this.tracingProperties.getPropagation(),
-					new BraveBaggageManager(this.tracingProperties.getBaggage().getTagFields()),
+					new BraveBaggageManager(this.tracingProperties.getBaggage().getTagFields(),
+							this.tracingProperties.getBaggage().getRemoteFields()),
 					LocalBaggageFields.extractFrom(throwAwayBuilder));
 			FactoryBuilder builder = BaggagePropagation.newFactoryBuilder(propagationFactory);
 			throwAwayBuilder.configs().forEach(builder::add);
 			return builder;
 		}
 
-		@SuppressWarnings("deprecation")
 		private Factory createThrowAwayFactory() {
 			return new Factory() {
 
 				@Override
-				public <K> Propagation<K> create(KeyFactory<K> keyFactory) {
+				public Propagation<String> get() {
 					return null;
 				}
 
@@ -143,8 +142,7 @@ class BravePropagationConfigurations {
 
 		@Bean
 		@Order(0)
-		@ConditionalOnProperty(prefix = "management.tracing.baggage.correlation", name = "enabled",
-				matchIfMissing = true)
+		@ConditionalOnBooleanProperty(name = "management.tracing.baggage.correlation.enabled", matchIfMissing = true)
 		CorrelationScopeCustomizer correlationFieldsCorrelationScopeCustomizer() {
 			return (builder) -> {
 				Correlation correlationProperties = this.tracingProperties.getBaggage().getCorrelation();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,8 +32,7 @@ import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointAu
 import org.springframework.boot.actuate.autoconfigure.web.server.ManagementContextAutoConfiguration;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
-import org.springframework.boot.actuate.endpoint.web.EndpointServlet;
-import org.springframework.boot.actuate.endpoint.web.annotation.ServletEndpoint;
+import org.springframework.boot.actuate.endpoint.annotation.WriteOperation;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
@@ -42,8 +41,10 @@ import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
@@ -55,6 +56,7 @@ import static org.springframework.security.config.Customizer.withDefaults;
  * Abstract base class for {@link EndpointRequest} tests.
  *
  * @author Madhura Bhave
+ * @author Chris Bono
  */
 abstract class AbstractEndpointRequestIntegrationTests {
 
@@ -63,6 +65,20 @@ abstract class AbstractEndpointRequestIntegrationTests {
 		getContextRunner().run((context) -> {
 			WebTestClient webTestClient = getWebTestClient(context);
 			webTestClient.get().uri("/actuator/e1").exchange().expectStatus().isOk();
+		});
+	}
+
+	@Test
+	void toEndpointPostShouldMatch() {
+		getContextRunner().withPropertyValues("spring.security.user.password=password").run((context) -> {
+			WebTestClient webTestClient = getWebTestClient(context);
+			webTestClient.post().uri("/actuator/e1").exchange().expectStatus().isUnauthorized();
+			webTestClient.post()
+				.uri("/actuator/e1")
+				.header("Authorization", getBasicAuth())
+				.exchange()
+				.expectStatus()
+				.isNoContent();
 		});
 	}
 
@@ -155,6 +171,10 @@ abstract class AbstractEndpointRequestIntegrationTests {
 			return "endpoint 1";
 		}
 
+		@WriteOperation
+		void setAll() {
+		}
+
 	}
 
 	@Endpoint(id = "e2")
@@ -177,12 +197,14 @@ abstract class AbstractEndpointRequestIntegrationTests {
 
 	}
 
-	@ServletEndpoint(id = "se1")
-	static class TestServletEndpoint implements Supplier<EndpointServlet> {
+	@org.springframework.boot.actuate.endpoint.web.annotation.ServletEndpoint(id = "se1")
+	@SuppressWarnings({ "deprecation", "removal" })
+	static class TestServletEndpoint
+			implements Supplier<org.springframework.boot.actuate.endpoint.web.EndpointServlet> {
 
 		@Override
-		public EndpointServlet get() {
-			return new EndpointServlet(ExampleServlet.class);
+		public org.springframework.boot.actuate.endpoint.web.EndpointServlet get() {
+			return new org.springframework.boot.actuate.endpoint.web.EndpointServlet(ExampleServlet.class);
 		}
 
 	}
@@ -200,10 +222,13 @@ abstract class AbstractEndpointRequestIntegrationTests {
 		SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 			http.authorizeHttpRequests((requests) -> {
 				requests.requestMatchers(EndpointRequest.toLinks()).permitAll();
+				requests.requestMatchers(EndpointRequest.to(TestEndpoint1.class).withHttpMethod(HttpMethod.POST))
+					.authenticated();
 				requests.requestMatchers(EndpointRequest.to(TestEndpoint1.class)).permitAll();
 				requests.requestMatchers(EndpointRequest.toAnyEndpoint()).authenticated();
 				requests.anyRequest().hasRole("ADMIN");
 			});
+			http.csrf(CsrfConfigurer::disable);
 			http.httpBasic(withDefaults());
 			return http.build();
 		}

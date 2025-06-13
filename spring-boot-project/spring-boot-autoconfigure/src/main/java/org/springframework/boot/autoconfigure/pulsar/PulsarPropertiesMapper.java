@@ -36,9 +36,10 @@ import org.apache.pulsar.client.api.PulsarClientException.UnsupportedAuthenticat
 import org.apache.pulsar.client.api.ReaderBuilder;
 import org.apache.pulsar.client.api.ServiceUrlProvider;
 import org.apache.pulsar.client.impl.AutoClusterFailover.AutoClusterFailoverBuilderImpl;
-import org.apache.pulsar.common.util.ObjectMapperFactory;
 
 import org.springframework.boot.context.properties.PropertyMapper;
+import org.springframework.boot.json.JsonWriter;
+import org.springframework.pulsar.core.PulsarTemplate;
 import org.springframework.pulsar.listener.PulsarContainerProperties;
 import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
 import org.springframework.util.StringUtils;
@@ -49,8 +50,12 @@ import org.springframework.util.StringUtils;
  * @author Chris Bono
  * @author Phillip Webb
  * @author Swamy Mavuri
+ * @author Vedran Pavic
  */
 final class PulsarPropertiesMapper {
+
+	private static final JsonWriter<Map<String, String>> jsonWriter = JsonWriter
+		.of((members) -> members.add().as(TreeMap::new).usingPairs(Map::forEach));
 
 	private final PulsarProperties properties;
 
@@ -64,6 +69,9 @@ final class PulsarPropertiesMapper {
 		map.from(properties::getConnectionTimeout).to(timeoutProperty(clientBuilder::connectionTimeout));
 		map.from(properties::getOperationTimeout).to(timeoutProperty(clientBuilder::operationTimeout));
 		map.from(properties::getLookupTimeout).to(timeoutProperty(clientBuilder::lookupTimeout));
+		map.from(properties.getThreads()::getIo).to(clientBuilder::ioThreads);
+		map.from(properties.getThreads()::getListener).to(clientBuilder::listenerThreads);
+		map.from(this.properties.getTransaction()::isEnabled).whenTrue().to(clientBuilder::enableTransaction);
 		customizeAuthentication(properties.getAuthentication(), clientBuilder::authentication);
 		customizeServiceUrlProviderBuilder(clientBuilder::serviceUrl, clientBuilder::serviceUrlProvider, properties,
 				connectionDetails);
@@ -82,8 +90,8 @@ final class PulsarPropertiesMapper {
 		PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
 		map.from(connectionDetails::getBrokerUrl).to(autoClusterFailoverBuilder::primary);
 		map.from(secondaryAuths::keySet).as(ArrayList::new).to(autoClusterFailoverBuilder::secondary);
-		map.from(failoverProperties::getFailoverPolicy).to(autoClusterFailoverBuilder::failoverPolicy);
-		map.from(failoverProperties::getFailOverDelay).to(timeoutProperty(autoClusterFailoverBuilder::failoverDelay));
+		map.from(failoverProperties::getPolicy).to(autoClusterFailoverBuilder::failoverPolicy);
+		map.from(failoverProperties::getDelay).to(timeoutProperty(autoClusterFailoverBuilder::failoverDelay));
 		map.from(failoverProperties::getSwitchBackDelay)
 			.to(timeoutProperty(autoClusterFailoverBuilder::switchBackDelay));
 		map.from(failoverProperties::getCheckInterval).to(timeoutProperty(autoClusterFailoverBuilder::checkInterval));
@@ -122,21 +130,11 @@ final class PulsarPropertiesMapper {
 		String pluginClassName = properties.getPluginClassName();
 		if (StringUtils.hasText(pluginClassName)) {
 			try {
-				action.accept(pluginClassName, getAuthenticationParamsJson(properties.getParam()));
+				action.accept(pluginClassName, jsonWriter.writeToString(properties.getParam()));
 			}
 			catch (UnsupportedAuthenticationException ex) {
 				throw new IllegalStateException("Unable to configure Pulsar authentication", ex);
 			}
-		}
-	}
-
-	private String getAuthenticationParamsJson(Map<String, String> params) {
-		Map<String, String> sortedParams = new TreeMap<>(params);
-		try {
-			return ObjectMapperFactory.create().writeValueAsString(sortedParams);
-		}
-		catch (Exception ex) {
-			throw new IllegalStateException("Could not convert auth parameters to encoded string", ex);
 		}
 	}
 
@@ -152,6 +150,10 @@ final class PulsarPropertiesMapper {
 		map.from(properties::isChunkingEnabled).to(producerBuilder::enableChunking);
 		map.from(properties::getCompressionType).to(producerBuilder::compressionType);
 		map.from(properties::getAccessMode).to(producerBuilder::accessMode);
+	}
+
+	<T> void customizeTemplate(PulsarTemplate<T> template) {
+		template.transactions().setEnabled(this.properties.getTransaction().isEnabled());
 	}
 
 	<T> void customizeConsumerBuilder(ConsumerBuilder<T> consumerBuilder) {
@@ -180,18 +182,21 @@ final class PulsarPropertiesMapper {
 	void customizeContainerProperties(PulsarContainerProperties containerProperties) {
 		customizePulsarContainerConsumerSubscriptionProperties(containerProperties);
 		customizePulsarContainerListenerProperties(containerProperties);
+		containerProperties.transactions().setEnabled(this.properties.getTransaction().isEnabled());
 	}
 
 	private void customizePulsarContainerConsumerSubscriptionProperties(PulsarContainerProperties containerProperties) {
 		PulsarProperties.Consumer.Subscription properties = this.properties.getConsumer().getSubscription();
 		PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
 		map.from(properties::getType).to(containerProperties::setSubscriptionType);
+		map.from(properties::getName).to(containerProperties::setSubscriptionName);
 	}
 
 	private void customizePulsarContainerListenerProperties(PulsarContainerProperties containerProperties) {
 		PulsarProperties.Listener properties = this.properties.getListener();
 		PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
 		map.from(properties::getSchemaType).to(containerProperties::setSchemaType);
+		map.from(properties::getConcurrency).to(containerProperties::setConcurrency);
 		map.from(properties::isObservationEnabled).to(containerProperties::setObservationEnabled);
 	}
 

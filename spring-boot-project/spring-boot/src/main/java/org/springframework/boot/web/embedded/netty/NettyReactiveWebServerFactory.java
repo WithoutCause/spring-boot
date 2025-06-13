@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ import org.springframework.util.StringUtils;
  *
  * @author Brian Clozel
  * @author Moritz Halbritter
+ * @author Scott Frederick
  * @since 2.0.0
  */
 public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFactory {
@@ -97,7 +98,7 @@ public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFact
 	 * @param serverCustomizers the customizers to set
 	 */
 	public void setServerCustomizers(Collection<? extends NettyServerCustomizer> serverCustomizers) {
-		Assert.notNull(serverCustomizers, "ServerCustomizers must not be null");
+		Assert.notNull(serverCustomizers, "'serverCustomizers' must not be null");
 		this.serverCustomizers = new LinkedHashSet<>(serverCustomizers);
 	}
 
@@ -107,7 +108,7 @@ public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFact
 	 * @param serverCustomizers the customizers to add
 	 */
 	public void addServerCustomizers(NettyServerCustomizer... serverCustomizers) {
-		Assert.notNull(serverCustomizers, "ServerCustomizer must not be null");
+		Assert.notNull(serverCustomizers, "'serverCustomizers' must not be null");
 		this.serverCustomizers.addAll(Arrays.asList(serverCustomizers));
 	}
 
@@ -117,7 +118,7 @@ public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFact
 	 * @param routeProviders the route providers to add
 	 */
 	public void addRouteProviders(NettyRouteProvider... routeProviders) {
-		Assert.notNull(routeProviders, "NettyRouteProvider must not be null");
+		Assert.notNull(routeProviders, "'routeProviders' must not be null");
 		this.routeProviders.addAll(Arrays.asList(routeProviders));
 	}
 
@@ -172,12 +173,20 @@ public class NettyReactiveWebServerFactory extends AbstractReactiveWebServerFact
 	}
 
 	private HttpServer customizeSslConfiguration(HttpServer httpServer) {
-		SslServerCustomizer customizer = new SslServerCustomizer(getHttp2(), getSsl().getClientAuth(), getSslBundle());
-		String bundleName = getSsl().getBundle();
-		if (StringUtils.hasText(bundleName)) {
-			getSslBundles().addBundleUpdateHandler(bundleName, customizer::updateSslBundle);
-		}
+		SslServerCustomizer customizer = new SslServerCustomizer(getHttp2(), getSsl().getClientAuth(), getSslBundle(),
+				getServerNameSslBundles());
+		addBundleUpdateHandler(null, getSsl().getBundle(), customizer);
+		getSsl().getServerNameBundles()
+			.forEach((serverNameSslBundle) -> addBundleUpdateHandler(serverNameSslBundle.serverName(),
+					serverNameSslBundle.bundle(), customizer));
 		return customizer.apply(httpServer);
+	}
+
+	private void addBundleUpdateHandler(String serverName, String bundleName, SslServerCustomizer customizer) {
+		if (StringUtils.hasText(bundleName)) {
+			getSslBundles().addBundleUpdateHandler(bundleName,
+					(sslBundle) -> customizer.updateSslBundle(serverName, sslBundle));
+		}
 	}
 
 	private HttpProtocol[] listProtocols() {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.springframework.boot.web.client;
 
-import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 
@@ -28,7 +27,7 @@ import org.springframework.http.client.ClientHttpRequest;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.http.client.OkHttp3ClientHttpRequestFactory;
+import org.springframework.http.client.ReactorClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,7 +37,10 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
  * Tests for {@link ClientHttpRequestFactories}.
  *
  * @author Andy Wilkinson
+ * @deprecated since 3.4.0 for removal in 4.0.0
  */
+@SuppressWarnings("removal")
+@Deprecated(since = "3.4.0", forRemoval = true)
 class ClientHttpRequestFactoriesTests {
 
 	@Test
@@ -70,12 +72,10 @@ class ClientHttpRequestFactoriesTests {
 	}
 
 	@Test
-	@Deprecated(since = "3.2.0")
-	@SuppressWarnings("removal")
-	void getOfOkHttpFactoryReturnsOkHttpFactory() {
-		ClientHttpRequestFactory requestFactory = ClientHttpRequestFactories.get(OkHttp3ClientHttpRequestFactory.class,
+	void getOfReactorFactoryReturnsReactorFactory() {
+		ClientHttpRequestFactory requestFactory = ClientHttpRequestFactories.get(ReactorClientHttpRequestFactory.class,
 				ClientHttpRequestFactorySettings.DEFAULTS);
-		assertThat(requestFactory).isInstanceOf(OkHttp3ClientHttpRequestFactory.class);
+		assertThat(requestFactory).isInstanceOf(ReactorClientHttpRequestFactory.class);
 	}
 
 	@Test
@@ -162,6 +162,18 @@ class ClientHttpRequestFactoriesTests {
 		assertThat(requestFactory).hasFieldOrPropertyWithValue("readTimeout", 1234);
 	}
 
+	@Test
+	void reflectiveShouldFavorDurationTimeoutMethods() {
+		IntAndDurationTimeoutsClientHttpRequestFactory requestFactory = ClientHttpRequestFactories.get(
+				IntAndDurationTimeoutsClientHttpRequestFactory.class,
+				ClientHttpRequestFactorySettings.DEFAULTS.withConnectTimeout(Duration.ofSeconds(1))
+					.withReadTimeout(Duration.ofSeconds(2)));
+		assertThat((requestFactory).connectTimeout).isZero();
+		assertThat((requestFactory).readTimeout).isZero();
+		assertThat((requestFactory).connectTimeoutDuration).isEqualTo(Duration.ofSeconds(1));
+		assertThat((requestFactory).readTimeoutDuration).isEqualTo(Duration.ofSeconds(2));
+	}
+
 	public static class TestClientHttpRequestFactory implements ClientHttpRequestFactory {
 
 		private int connectTimeout;
@@ -169,7 +181,7 @@ class ClientHttpRequestFactoriesTests {
 		private int readTimeout;
 
 		@Override
-		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
+		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) {
 			throw new UnsupportedOperationException();
 		}
 
@@ -186,7 +198,7 @@ class ClientHttpRequestFactoriesTests {
 	public static class UnconfigurableClientHttpRequestFactory implements ClientHttpRequestFactory {
 
 		@Override
-		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
+		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) {
 			throw new UnsupportedOperationException();
 		}
 
@@ -195,7 +207,7 @@ class ClientHttpRequestFactoriesTests {
 	public static class DeprecatedMethodsClientHttpRequestFactory implements ClientHttpRequestFactory {
 
 		@Override
-		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
+		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) {
 			throw new UnsupportedOperationException();
 		}
 
@@ -209,6 +221,39 @@ class ClientHttpRequestFactoriesTests {
 
 		@Deprecated(since = "3.0.0", forRemoval = false)
 		public void setBufferRequestBody(boolean bufferRequestBody) {
+		}
+
+	}
+
+	public static class IntAndDurationTimeoutsClientHttpRequestFactory implements ClientHttpRequestFactory {
+
+		private int readTimeout;
+
+		private int connectTimeout;
+
+		private Duration readTimeoutDuration;
+
+		private Duration connectTimeoutDuration;
+
+		@Override
+		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) {
+			throw new UnsupportedOperationException();
+		}
+
+		public void setConnectTimeout(int timeout) {
+			this.connectTimeout = timeout;
+		}
+
+		public void setReadTimeout(int timeout) {
+			this.readTimeout = timeout;
+		}
+
+		public void setConnectTimeout(Duration timeout) {
+			this.connectTimeoutDuration = timeout;
+		}
+
+		public void setReadTimeout(Duration timeout) {
+			this.readTimeoutDuration = timeout;
 		}
 
 	}

@@ -20,7 +20,9 @@ bootJar {
 
 repositories {
 	mavenCentral()
-	maven { url "file:repository" }
+	maven {
+		url = 'repository'
+	}
 }
 
 dependencies {
@@ -31,14 +33,14 @@ dependencies {
 	implementation("org.springframework:spring-core:5.2.5.RELEASE")
 }
 
-task listLayers(type: JavaExec) {
+tasks.register("listLayers", JavaExec) {
 	classpath = bootJar.outputs.files
-	systemProperties = [ "jarmode": "layertools" ]
-	args "list"
+	systemProperties = [ "jarmode": "tools" ]
+	args "list-layers"
 }
 
-task extractLayers(type: JavaExec) {
+tasks.register("extractLayers", JavaExec) {
 	classpath = bootJar.outputs.files
-	systemProperties = [ "jarmode": "layertools" ]
-	args "extract"
+	systemProperties = [ "jarmode": "tools" ]
+	args "extract", "--layers", "--launcher", "--destination", ".", "--force"
 }

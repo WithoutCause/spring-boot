@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,24 +34,6 @@ public class JarLauncher extends ExecutableArchiveLauncher {
 
 	protected JarLauncher(Archive archive) throws Exception {
 		super(archive);
-	}
-
-	@Override
-	protected boolean isIncludedOnClassPath(Archive.Entry entry) {
-		return isLibraryFileOrClassesDirectory(entry);
-	}
-
-	@Override
-	protected String getEntryPathPrefix() {
-		return "BOOT-INF/";
-	}
-
-	static boolean isLibraryFileOrClassesDirectory(Archive.Entry entry) {
-		String name = entry.name();
-		if (entry.isDirectory()) {
-			return name.equals("BOOT-INF/classes/");
-		}
-		return name.startsWith("BOOT-INF/lib/");
 	}
 
 	public static void main(String[] args) throws Exception {

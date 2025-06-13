@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,20 +44,33 @@ import org.springframework.test.web.reactive.server.WebTestClient;
  * Annotation that can be used for a Spring WebFlux test that focuses
  * <strong>only</strong> on Spring WebFlux components.
  * <p>
- * Using this annotation will disable full auto-configuration and instead apply only
- * configuration relevant to WebFlux tests (i.e. {@code @Controller},
- * {@code @ControllerAdvice}, {@code @JsonComponent},
- * {@code Converter}/{@code GenericConverter}, and {@code WebFluxConfigurer} beans but not
- * {@code @Component}, {@code @Service} or {@code @Repository} beans).
+ * Using this annotation only enables auto-configuration that is relevant to WebFlux
+ * tests. Similarly, component scanning is limited to beans annotated with:
+ * <ul>
+ * <li>{@code @Controller}</li>
+ * <li>{@code @ControllerAdvice}</li>
+ * <li>{@code @JsonComponent}</li>
+ * </ul>
+ * <p>
+ * as well as beans that implement:
+ * <ul>
+ * <li>{@code Converter}</li>
+ * <li>{@code GenericConverter}</li>
+ * <li>{@code IDialect}, if Thymeleaf is available</li>
+ * <li>{@code Module}, if Jackson is available</li>
+ * <li>{@code WebExceptionHandler}</li>
+ * <li>{@code WebFluxConfigurer}</li>
+ * <li>{@code WebFilter}</li>
+ * </ul>
  * <p>
  * By default, tests annotated with {@code @WebFluxTest} will also auto-configure a
  * {@link WebTestClient}. For more fine-grained control of WebTestClient the
  * {@link AutoConfigureWebTestClient @AutoConfigureWebTestClient} annotation can be used.
  * <p>
  * Typically {@code @WebFluxTest} is used in combination with
- * {@link org.springframework.boot.test.mock.mockito.MockBean @MockBean} or
- * {@link Import @Import} to create any collaborators required by your {@code @Controller}
- * beans.
+ * {@link org.springframework.test.context.bean.override.mockito.MockitoBean @MockitoBean}
+ * or {@link Import @Import} to create any collaborators required by your
+ * {@code @Controller} beans.
  * <p>
  * If you are looking to load your full application configuration and use WebTestClient,
  * you should consider {@link SpringBootTest @SpringBootTest} combined with

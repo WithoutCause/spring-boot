@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,13 +37,13 @@ public class MongoReactiveHealthIndicator extends AbstractReactiveHealthIndicato
 
 	public MongoReactiveHealthIndicator(ReactiveMongoTemplate reactiveMongoTemplate) {
 		super("Mongo health check failed");
-		Assert.notNull(reactiveMongoTemplate, "ReactiveMongoTemplate must not be null");
+		Assert.notNull(reactiveMongoTemplate, "'reactiveMongoTemplate' must not be null");
 		this.reactiveMongoTemplate = reactiveMongoTemplate;
 	}
 
 	@Override
 	protected Mono<Health> doHealthCheck(Health.Builder builder) {
-		Mono<Document> buildInfo = this.reactiveMongoTemplate.executeCommand("{ isMaster: 1 }");
+		Mono<Document> buildInfo = this.reactiveMongoTemplate.executeCommand("{ hello: 1 }");
 		return buildInfo.map((document) -> up(builder, document));
 	}
 

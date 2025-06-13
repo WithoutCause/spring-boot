@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,9 +25,11 @@ import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 import kotlin.reflect.KFunction;
@@ -72,7 +74,7 @@ class ValueObjectBinder implements DataObjectBinder {
 	@Override
 	public <T> T bind(ConfigurationPropertyName name, Bindable<T> target, Binder.Context context,
 			DataObjectPropertyBinder propertyBinder) {
-		ValueObject<T> valueObject = ValueObject.get(target, this.constructorProvider, context, Discoverer.LENIENT);
+		ValueObject<T> valueObject = ValueObject.get(target, context, this.constructorProvider, Discoverer.LENIENT);
 		if (valueObject == null) {
 			return null;
 		}
@@ -93,7 +95,7 @@ class ValueObjectBinder implements DataObjectBinder {
 
 	@Override
 	public <T> T create(Bindable<T> target, Binder.Context context) {
-		ValueObject<T> valueObject = ValueObject.get(target, this.constructorProvider, context, Discoverer.LENIENT);
+		ValueObject<T> valueObject = ValueObject.get(target, context, this.constructorProvider, Discoverer.LENIENT);
 		if (valueObject == null) {
 			return null;
 		}
@@ -108,7 +110,7 @@ class ValueObjectBinder implements DataObjectBinder {
 	@Override
 	public <T> void onUnableToCreateInstance(Bindable<T> target, Context context, RuntimeException exception) {
 		try {
-			ValueObject.get(target, this.constructorProvider, context, Discoverer.STRICT);
+			ValueObject.get(target, context, this.constructorProvider, Discoverer.STRICT);
 		}
 		catch (Exception ex) {
 			exception.addSuppressed(ex);
@@ -156,6 +158,10 @@ class ValueObjectBinder implements DataObjectBinder {
 			if (Collection.class.isAssignableFrom(resolved)) {
 				return (T) CollectionFactory.createCollection(resolved, 0);
 			}
+			if (EnumMap.class.isAssignableFrom(resolved)) {
+				Class<?> keyType = type.asMap().resolveGeneric(0);
+				return (T) CollectionFactory.createMap(resolved, keyType, 0);
+			}
 			if (Map.class.isAssignableFrom(resolved)) {
 				return (T) CollectionFactory.createMap(resolved, 0);
 			}
@@ -186,6 +192,8 @@ class ValueObjectBinder implements DataObjectBinder {
 	 */
 	private abstract static class ValueObject<T> {
 
+		private static final Object NONE = new Object();
+
 		private final Constructor<T> constructor;
 
 		protected ValueObject(Constructor<T> constructor) {
@@ -199,22 +207,51 @@ class ValueObjectBinder implements DataObjectBinder {
 		abstract List<ConstructorParameter> getConstructorParameters();
 
 		@SuppressWarnings("unchecked")
-		static <T> ValueObject<T> get(Bindable<T> bindable, BindConstructorProvider constructorProvider,
-				Binder.Context context, ParameterNameDiscoverer parameterNameDiscoverer) {
-			Class<T> type = (Class<T>) bindable.getType().resolve();
-			if (type == null || type.isEnum() || Modifier.isAbstract(type.getModifiers())) {
+		static <T> ValueObject<T> get(Bindable<T> bindable, Binder.Context context,
+				BindConstructorProvider constructorProvider, ParameterNameDiscoverer parameterNameDiscoverer) {
+			Class<T> resolvedType = (Class<T>) bindable.getType().resolve();
+			if (resolvedType == null || resolvedType.isEnum() || Modifier.isAbstract(resolvedType.getModifiers())) {
 				return null;
 			}
+			Map<CacheKey, Object> cache = getCache(context);
+			CacheKey cacheKey = new CacheKey(bindable, constructorProvider, parameterNameDiscoverer);
+			Object valueObject = cache.get(cacheKey);
+			if (valueObject == null) {
+				valueObject = get(bindable, context, constructorProvider, parameterNameDiscoverer, resolvedType);
+				cache.put(cacheKey, (valueObject != null) ? valueObject : NONE);
+			}
+			return (valueObject != NONE) ? (ValueObject<T>) valueObject : null;
+		}
+
+		@SuppressWarnings("unchecked")
+		private static <T> ValueObject<T> get(Bindable<T> bindable, Binder.Context context,
+				BindConstructorProvider constructorProvider, ParameterNameDiscoverer parameterNameDiscoverer,
+				Class<T> resolvedType) {
 			Constructor<?> bindConstructor = constructorProvider.getBindConstructor(bindable,
 					context.isNestedConstructorBinding());
 			if (bindConstructor == null) {
 				return null;
 			}
-			if (KotlinDetector.isKotlinType(type)) {
+			if (KotlinDetector.isKotlinType(resolvedType)) {
 				return KotlinValueObject.get((Constructor<T>) bindConstructor, bindable.getType(),
 						parameterNameDiscoverer);
 			}
 			return DefaultValueObject.get(bindConstructor, bindable.getType(), parameterNameDiscoverer);
+		}
+
+		@SuppressWarnings("unchecked")
+		private static Map<CacheKey, Object> getCache(Context context) {
+			Map<CacheKey, Object> cache = (Map<CacheKey, Object>) context.getCache().get(ValueObject.class);
+			if (cache == null) {
+				cache = new ConcurrentHashMap<>();
+				context.getCache().put(ValueObject.class, cache);
+			}
+			return cache;
+		}
+
+		private record CacheKey(Bindable<?> bindable, BindConstructorProvider constructorProvider,
+				ParameterNameDiscoverer parameterNameDiscoverer) {
+
 		}
 
 	}

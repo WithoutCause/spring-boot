@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,7 +63,8 @@ public class TaskSchedulingProperties {
 	public static class Pool {
 
 		/**
-		 * Maximum allowed number of threads.
+		 * Maximum allowed number of threads. Doesn't have an effect if virtual threads
+		 * are enabled.
 		 */
 		private int size = 1;
 

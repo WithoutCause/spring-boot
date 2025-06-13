@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,6 +65,30 @@ class ImageTests extends AbstractJsonTests {
 	void getOsReturnsOs() throws Exception {
 		Image image = getImage();
 		assertThat(image.getOs()).isEqualTo("linux");
+	}
+
+	@Test
+	void getOsWhenOsIsNotDefaultOsReturnsOs() throws Exception {
+		Image image = Image.of(getContent("image-non-default-os.json"));
+		assertThat(image.getOs()).isEqualTo("windows");
+	}
+
+	@Test
+	void getOsWhenOsIsEmptyReturnsDefaultOs() throws Exception {
+		Image image = Image.of(getContent("image-empty-os.json"));
+		assertThat(image.getOs()).isEqualTo("linux");
+	}
+
+	@Test
+	void getArchitectureReturnsArchitecture() throws Exception {
+		Image image = getImage();
+		assertThat(image.getArchitecture()).isEqualTo("amd64");
+	}
+
+	@Test
+	void getVariantReturnsVariant() throws Exception {
+		Image image = getImage();
+		assertThat(image.getVariant()).isEqualTo("v1");
 	}
 
 	@Test

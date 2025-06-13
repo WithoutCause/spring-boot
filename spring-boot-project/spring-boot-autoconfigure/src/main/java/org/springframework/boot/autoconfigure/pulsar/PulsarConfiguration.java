@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,19 +22,21 @@ import java.util.List;
 import org.apache.pulsar.client.admin.PulsarAdminBuilder;
 import org.apache.pulsar.client.api.ClientBuilder;
 import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.schema.SchemaType;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.pulsar.PulsarProperties.Defaults.SchemaInfo;
 import org.springframework.boot.autoconfigure.pulsar.PulsarProperties.Defaults.TypeMapping;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.util.LambdaSafe;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Scope;
 import org.springframework.pulsar.core.DefaultPulsarClientFactory;
 import org.springframework.pulsar.core.DefaultSchemaResolver;
 import org.springframework.pulsar.core.DefaultTopicResolver;
@@ -42,6 +44,7 @@ import org.springframework.pulsar.core.PulsarAdminBuilderCustomizer;
 import org.springframework.pulsar.core.PulsarAdministration;
 import org.springframework.pulsar.core.PulsarClientBuilderCustomizer;
 import org.springframework.pulsar.core.PulsarClientFactory;
+import org.springframework.pulsar.core.PulsarTopicBuilder;
 import org.springframework.pulsar.core.SchemaResolver;
 import org.springframework.pulsar.core.SchemaResolver.SchemaResolverCustomizer;
 import org.springframework.pulsar.core.TopicResolver;
@@ -96,7 +99,7 @@ class PulsarConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	PulsarClient pulsarClient(PulsarClientFactory clientFactory) throws PulsarClientException {
+	PulsarClient pulsarClient(PulsarClientFactory clientFactory) {
 		return clientFactory.createClient();
 	}
 
@@ -168,13 +171,29 @@ class PulsarConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	@ConditionalOnProperty(name = "spring.pulsar.function.enabled", havingValue = "true", matchIfMissing = true)
+	@ConditionalOnBooleanProperty(name = "spring.pulsar.function.enabled", matchIfMissing = true)
 	PulsarFunctionAdministration pulsarFunctionAdministration(PulsarAdministration pulsarAdministration,
 			ObjectProvider<PulsarFunction> pulsarFunctions, ObjectProvider<PulsarSink> pulsarSinks,
 			ObjectProvider<PulsarSource> pulsarSources) {
 		PulsarProperties.Function properties = this.properties.getFunction();
 		return new PulsarFunctionAdministration(pulsarAdministration, pulsarFunctions, pulsarSinks, pulsarSources,
 				properties.isFailFast(), properties.isPropagateFailures(), properties.isPropagateStopFailures());
+	}
+
+	@Bean
+	@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+	@ConditionalOnMissingBean
+	@ConditionalOnBooleanProperty(name = "spring.pulsar.defaults.topic.enabled", matchIfMissing = true)
+	PulsarTopicBuilder pulsarTopicBuilder() {
+		return new PulsarTopicBuilder(TopicDomain.persistent, this.properties.getDefaults().getTopic().getTenant(),
+				this.properties.getDefaults().getTopic().getNamespace());
+	}
+
+	@Bean
+	@ConditionalOnMissingBean
+	PulsarContainerFactoryCustomizers pulsarContainerFactoryCustomizers(
+			ObjectProvider<PulsarContainerFactoryCustomizer<?>> customizers) {
+		return new PulsarContainerFactoryCustomizers(customizers.orderedStream().toList());
 	}
 
 }

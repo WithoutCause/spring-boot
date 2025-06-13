@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundleRegistry;
+import org.springframework.core.io.ResourceLoader;
 
 /**
  * A {@link SslBundleRegistrar} that registers SSL bundles based
@@ -42,9 +44,12 @@ class SslPropertiesBundleRegistrar implements SslBundleRegistrar {
 
 	private final FileWatcher fileWatcher;
 
-	SslPropertiesBundleRegistrar(SslProperties properties, FileWatcher fileWatcher) {
+	private final ResourceLoader resourceLoader;
+
+	SslPropertiesBundleRegistrar(SslProperties properties, FileWatcher fileWatcher, ResourceLoader resourceLoader) {
 		this.properties = properties.getBundle();
 		this.fileWatcher = fileWatcher;
+		this.resourceLoader = resourceLoader;
 	}
 
 	@Override
@@ -54,13 +59,14 @@ class SslPropertiesBundleRegistrar implements SslBundleRegistrar {
 	}
 
 	private <P extends SslBundleProperties> void registerBundles(SslBundleRegistry registry, Map<String, P> properties,
-			Function<P, SslBundle> bundleFactory, Function<P, Set<Path>> watchedPaths) {
+			BiFunction<P, ResourceLoader, SslBundle> bundleFactory, Function<Bundle<P>, Set<Path>> watchedPaths) {
 		properties.forEach((bundleName, bundleProperties) -> {
-			Supplier<SslBundle> bundleSupplier = () -> bundleFactory.apply(bundleProperties);
+			Supplier<SslBundle> bundleSupplier = () -> bundleFactory.apply(bundleProperties, this.resourceLoader);
 			try {
 				registry.registerBundle(bundleName, bundleSupplier.get());
 				if (bundleProperties.isReloadOnUpdate()) {
-					Supplier<Set<Path>> pathsSupplier = () -> watchedPaths.apply(bundleProperties);
+					Supplier<Set<Path>> pathsSupplier = () -> watchedPaths
+						.apply(new Bundle<>(bundleName, bundleProperties));
 					watchForUpdates(registry, bundleName, pathsSupplier, bundleSupplier);
 				}
 			}
@@ -80,27 +86,40 @@ class SslPropertiesBundleRegistrar implements SslBundleRegistrar {
 		}
 	}
 
-	private Set<Path> watchedJksPaths(JksSslBundleProperties properties) {
+	private Set<Path> watchedJksPaths(Bundle<JksSslBundleProperties> bundle) {
 		List<BundleContentProperty> watched = new ArrayList<>();
-		watched.add(new BundleContentProperty("keystore.location", properties.getKeystore().getLocation()));
-		watched.add(new BundleContentProperty("truststore.location", properties.getTruststore().getLocation()));
-		return watchedPaths(watched);
+		watched.add(new BundleContentProperty("keystore.location", bundle.properties().getKeystore().getLocation()));
+		watched
+			.add(new BundleContentProperty("truststore.location", bundle.properties().getTruststore().getLocation()));
+		return watchedPaths(bundle.name(), watched);
 	}
 
-	private Set<Path> watchedPemPaths(PemSslBundleProperties properties) {
+	private Set<Path> watchedPemPaths(Bundle<PemSslBundleProperties> bundle) {
 		List<BundleContentProperty> watched = new ArrayList<>();
-		watched.add(new BundleContentProperty("keystore.private-key", properties.getKeystore().getPrivateKey()));
-		watched.add(new BundleContentProperty("keystore.certificate", properties.getKeystore().getCertificate()));
-		watched.add(new BundleContentProperty("truststore.private-key", properties.getTruststore().getPrivateKey()));
-		watched.add(new BundleContentProperty("truststore.certificate", properties.getTruststore().getCertificate()));
-		return watchedPaths(watched);
+		watched
+			.add(new BundleContentProperty("keystore.private-key", bundle.properties().getKeystore().getPrivateKey()));
+		watched
+			.add(new BundleContentProperty("keystore.certificate", bundle.properties().getKeystore().getCertificate()));
+		watched.add(new BundleContentProperty("truststore.private-key",
+				bundle.properties().getTruststore().getPrivateKey()));
+		watched.add(new BundleContentProperty("truststore.certificate",
+				bundle.properties().getTruststore().getCertificate()));
+		return watchedPaths(bundle.name(), watched);
 	}
 
-	private Set<Path> watchedPaths(List<BundleContentProperty> properties) {
-		return properties.stream()
-			.filter(BundleContentProperty::hasValue)
-			.map(BundleContentProperty::toWatchPath)
-			.collect(Collectors.toSet());
+	private Set<Path> watchedPaths(String bundleName, List<BundleContentProperty> properties) {
+		try {
+			return properties.stream()
+				.filter(BundleContentProperty::hasValue)
+				.map((content) -> content.toWatchPath(this.resourceLoader))
+				.collect(Collectors.toSet());
+		}
+		catch (BundleContentNotWatchableException ex) {
+			throw ex.withBundleName(bundleName);
+		}
+	}
+
+	private record Bundle<P>(String name, P properties) {
 	}
 
 }

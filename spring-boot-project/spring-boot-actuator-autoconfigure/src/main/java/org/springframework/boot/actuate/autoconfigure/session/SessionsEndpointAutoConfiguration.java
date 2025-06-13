@@ -44,7 +44,7 @@ import org.springframework.session.SessionRepository;
  */
 @AutoConfiguration(after = SessionAutoConfiguration.class)
 @ConditionalOnClass(Session.class)
-@ConditionalOnAvailableEndpoint(endpoint = SessionsEndpoint.class)
+@ConditionalOnAvailableEndpoint(SessionsEndpoint.class)
 public class SessionsEndpointAutoConfiguration {
 
 	@Configuration(proxyBeanMethods = false)
@@ -54,8 +54,8 @@ public class SessionsEndpointAutoConfiguration {
 
 		@Bean
 		@ConditionalOnMissingBean
-		SessionsEndpoint sessionEndpoint(SessionRepository<? extends Session> sessionRepository,
-				ObjectProvider<FindByIndexNameSessionRepository<? extends Session>> indexedSessionRepository) {
+		SessionsEndpoint sessionEndpoint(SessionRepository<?> sessionRepository,
+				ObjectProvider<FindByIndexNameSessionRepository<?>> indexedSessionRepository) {
 			return new SessionsEndpoint(sessionRepository, indexedSessionRepository.getIfAvailable());
 		}
 
@@ -68,8 +68,8 @@ public class SessionsEndpointAutoConfiguration {
 
 		@Bean
 		@ConditionalOnMissingBean
-		ReactiveSessionsEndpoint sessionsEndpoint(ReactiveSessionRepository<? extends Session> sessionRepository,
-				ObjectProvider<ReactiveFindByIndexNameSessionRepository<? extends Session>> indexedSessionRepository) {
+		ReactiveSessionsEndpoint sessionsEndpoint(ReactiveSessionRepository<?> sessionRepository,
+				ObjectProvider<ReactiveFindByIndexNameSessionRepository<?>> indexedSessionRepository) {
 			return new ReactiveSessionsEndpoint(sessionRepository, indexedSessionRepository.getIfAvailable());
 		}
 

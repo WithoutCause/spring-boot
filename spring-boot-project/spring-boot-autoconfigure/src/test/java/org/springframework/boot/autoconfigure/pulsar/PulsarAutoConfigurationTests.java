@@ -18,6 +18,7 @@ package org.springframework.boot.autoconfigure.pulsar;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -27,7 +28,6 @@ import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.ReaderBuilder;
 import org.apache.pulsar.client.api.interceptor.ProducerInterceptor;
 import org.apache.pulsar.common.schema.SchemaType;
-import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledForJreRange;
@@ -67,9 +67,14 @@ import org.springframework.pulsar.core.PulsarConsumerFactory;
 import org.springframework.pulsar.core.PulsarProducerFactory;
 import org.springframework.pulsar.core.PulsarReaderFactory;
 import org.springframework.pulsar.core.PulsarTemplate;
+import org.springframework.pulsar.core.PulsarTopicBuilder;
 import org.springframework.pulsar.core.ReaderBuilderCustomizer;
 import org.springframework.pulsar.core.SchemaResolver;
 import org.springframework.pulsar.core.TopicResolver;
+import org.springframework.pulsar.listener.PulsarContainerProperties.TransactionSettings;
+import org.springframework.pulsar.reactive.config.DefaultReactivePulsarListenerContainerFactory;
+import org.springframework.pulsar.transaction.PulsarAwareTransactionManager;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -123,6 +128,7 @@ class PulsarAutoConfigurationTests {
 			.hasSingleBean(PulsarConnectionDetails.class)
 			.hasSingleBean(DefaultPulsarClientFactory.class)
 			.hasSingleBean(PulsarClient.class)
+			.hasSingleBean(PulsarTopicBuilder.class)
 			.hasSingleBean(PulsarAdministration.class)
 			.hasSingleBean(DefaultSchemaResolver.class)
 			.hasSingleBean(DefaultTopicResolver.class)
@@ -136,6 +142,12 @@ class PulsarAutoConfigurationTests {
 			.hasSingleBean(PulsarListenerEndpointRegistry.class)
 			.hasSingleBean(PulsarReaderAnnotationBeanPostProcessor.class)
 			.hasSingleBean(PulsarReaderEndpointRegistry.class));
+	}
+
+	@Test
+	void topicDefaultsCanBeDisabled() {
+		this.contextRunner.withPropertyValues("spring.pulsar.defaults.topic.enabled=false")
+			.run((context) -> assertThat(context).doesNotHaveBean(PulsarTopicBuilder.class));
 	}
 
 	@Nested
@@ -216,7 +228,17 @@ class PulsarAutoConfigurationTests {
 						"spring.pulsar.producer.cache.enabled=false")
 				.run((context) -> assertThat(context).getBean(DefaultPulsarProducerFactory.class)
 					.hasFieldOrPropertyWithValue("pulsarClient", context.getBean(PulsarClient.class))
-					.hasFieldOrPropertyWithValue("topicResolver", context.getBean(TopicResolver.class)));
+					.hasFieldOrPropertyWithValue("topicResolver", context.getBean(TopicResolver.class))
+					.extracting("topicBuilder")
+					.isNotNull());
+		}
+
+		@Test
+		void hasNoTopicBuilderWhenTopicDefaultsAreDisabled() {
+			this.contextRunner.withPropertyValues("spring.pulsar.defaults.topic.enabled=false")
+				.run((context) -> assertThat(context).getBean(DefaultPulsarProducerFactory.class)
+					.extracting("topicBuilder")
+					.isNull());
 		}
 
 		@ParameterizedTest
@@ -284,22 +306,29 @@ class PulsarAutoConfigurationTests {
 		}
 
 		@Test
-		void whenHasUseDefinedProducerInterceptorInjectsBean() {
+		<T> void whenHasUseDefinedProducerInterceptorInjectsBean() {
 			ProducerInterceptor interceptor = mock(ProducerInterceptor.class);
 			this.contextRunner.withBean("customProducerInterceptor", ProducerInterceptor.class, () -> interceptor)
-				.run((context) -> assertThat(context).getBean(PulsarTemplate.class)
-					.extracting("interceptors")
-					.asInstanceOf(InstanceOfAssertFactories.LIST)
-					.contains(interceptor));
+				.run((context) -> {
+					PulsarTemplate<?> pulsarTemplate = context.getBean(PulsarTemplate.class);
+					Customizers<ProducerBuilderCustomizer<T>, ProducerBuilder<T>> customizers = Customizers
+						.of(ProducerBuilder.class, ProducerBuilderCustomizer::customize);
+					assertThat(customizers.fromField(pulsarTemplate, "interceptorsCustomizers"))
+						.callsInOrder(ProducerBuilder::intercept, interceptor);
+				});
 		}
 
 		@Test
-		void whenHasUseDefinedProducerInterceptorsInjectsBeansInCorrectOrder() {
-			this.contextRunner.withUserConfiguration(InterceptorTestConfiguration.class)
-				.run((context) -> assertThat(context).getBean(PulsarTemplate.class)
-					.extracting("interceptors")
-					.asInstanceOf(InstanceOfAssertFactories.LIST)
-					.containsExactly(context.getBean("interceptorBar"), context.getBean("interceptorFoo")));
+		<T> void whenHasUseDefinedProducerInterceptorsInjectsBeansInCorrectOrder() {
+			this.contextRunner.withUserConfiguration(InterceptorTestConfiguration.class).run((context) -> {
+				ProducerInterceptor interceptorFoo = context.getBean("interceptorFoo", ProducerInterceptor.class);
+				ProducerInterceptor interceptorBar = context.getBean("interceptorBar", ProducerInterceptor.class);
+				PulsarTemplate<?> pulsarTemplate = context.getBean(PulsarTemplate.class);
+				Customizers<ProducerBuilderCustomizer<T>, ProducerBuilder<T>> customizers = Customizers
+					.of(ProducerBuilder.class, ProducerBuilderCustomizer::customize);
+				assertThat(customizers.fromField(pulsarTemplate, "interceptorsCustomizers"))
+					.callsInOrder(ProducerBuilder::intercept, interceptorBar, interceptorFoo);
+			});
 		}
 
 		@Test
@@ -320,6 +349,13 @@ class PulsarAutoConfigurationTests {
 			this.contextRunner.withPropertyValues("spring.pulsar.template.observations-enabled=false")
 				.run((context) -> assertThat(context).getBean(PulsarTemplate.class)
 					.hasFieldOrPropertyWithValue("observationEnabled", false));
+		}
+
+		@Test
+		void whenTransactionEnabledTrueEnablesTransactions() {
+			this.contextRunner.withPropertyValues("spring.pulsar.transaction.enabled=true")
+				.run((context) -> assertThat(context.getBean(PulsarTemplate.class).transactions().isEnabled())
+					.isTrue());
 		}
 
 		@Configuration(proxyBeanMethods = false)
@@ -358,7 +394,18 @@ class PulsarAutoConfigurationTests {
 		@Test
 		void injectsExpectedBeans() {
 			this.contextRunner.run((context) -> assertThat(context).getBean(DefaultPulsarConsumerFactory.class)
-				.hasFieldOrPropertyWithValue("pulsarClient", context.getBean(PulsarClient.class)));
+				.hasFieldOrPropertyWithValue("pulsarClient", context.getBean(PulsarClient.class))
+				.extracting("topicBuilder")
+				.isNotNull());
+		}
+
+		@Test
+		void hasNoTopicBuilderWhenTopicDefaultsAreDisabled() {
+			this.contextRunner.withPropertyValues("spring.pulsar.defaults.topic.enabled=false")
+				.run((context) -> assertThat(context).getBean(DefaultPulsarConsumerFactory.class)
+					.hasFieldOrPropertyWithValue("pulsarClient", context.getBean(PulsarClient.class))
+					.extracting("topicBuilder")
+					.isNull());
 		}
 
 		@Test
@@ -500,6 +547,10 @@ class PulsarAutoConfigurationTests {
 					.getBean(ConcurrentPulsarListenerContainerFactory.class);
 				assertThat(factory.getContainerProperties().getConsumerTaskExecutor())
 					.isInstanceOf(VirtualThreadTaskExecutor.class);
+				Object taskExecutor = factory.getContainerProperties().getConsumerTaskExecutor();
+				Object virtualThread = ReflectionTestUtils.getField(taskExecutor, "virtualThreadFactory");
+				Thread threadCreated = ((ThreadFactory) virtualThread).newThread(mock(Runnable.class));
+				assertThat(threadCreated.getName()).containsPattern("pulsar-consumer-[0-9]+");
 			});
 		}
 
@@ -511,6 +562,67 @@ class PulsarAutoConfigurationTests {
 					.getBean(ConcurrentPulsarListenerContainerFactory.class);
 				assertThat(factory.getContainerProperties().getConsumerTaskExecutor()).isNull();
 			});
+		}
+
+		@Test
+		void whenTransactionEnabledTrueListenerContainerShouldUseTransactions() {
+			this.contextRunner.withPropertyValues("spring.pulsar.transaction.enabled=true").run((context) -> {
+				ConcurrentPulsarListenerContainerFactory<?> factory = context
+					.getBean(ConcurrentPulsarListenerContainerFactory.class);
+				TransactionSettings transactions = factory.getContainerProperties().transactions();
+				assertThat(transactions.isEnabled()).isTrue();
+				assertThat(transactions.getTransactionManager()).isNotNull();
+			});
+		}
+
+		@Test
+		void whenTransactionEnabledFalseListenerContainerShouldNotUseTransactions() {
+			this.contextRunner.withPropertyValues("spring.pulsar.transaction.enabled=false").run((context) -> {
+				ConcurrentPulsarListenerContainerFactory<?> factory = context
+					.getBean(ConcurrentPulsarListenerContainerFactory.class);
+				TransactionSettings transactions = factory.getContainerProperties().transactions();
+				assertThat(transactions.isEnabled()).isFalse();
+				assertThat(transactions.getTransactionManager()).isNull();
+			});
+		}
+
+		@Test
+		void whenHasUserDefinedCustomizersAppliesInCorrectOrder() {
+			this.contextRunner.withUserConfiguration(ListenerContainerFactoryCustomizersConfig.class)
+				.run((context) -> assertThat(context).getBean(ConcurrentPulsarListenerContainerFactory.class)
+					.hasFieldOrPropertyWithValue("containerProperties.subscriptionName", ":bar:foo"));
+		}
+
+		@TestConfiguration(proxyBeanMethods = false)
+		static class ListenerContainerFactoryCustomizersConfig {
+
+			@Bean
+			@Order(50)
+			PulsarContainerFactoryCustomizer<DefaultReactivePulsarListenerContainerFactory<?>> customizerIgnored() {
+				return (containerFactory) -> {
+					throw new IllegalStateException("should-not-have-matched");
+				};
+			}
+
+			@Bean
+			@Order(200)
+			PulsarContainerFactoryCustomizer<ConcurrentPulsarListenerContainerFactory<?>> customizerFoo() {
+				return (containerFactory) -> appendToSubscriptionName(containerFactory, ":foo");
+			}
+
+			@Bean
+			@Order(100)
+			PulsarContainerFactoryCustomizer<ConcurrentPulsarListenerContainerFactory<?>> customizerBar() {
+				return (containerFactory) -> appendToSubscriptionName(containerFactory, ":bar");
+			}
+
+			private void appendToSubscriptionName(ConcurrentPulsarListenerContainerFactory<?> containerFactory,
+					String valueToAppend) {
+				String subscriptionName = containerFactory.getContainerProperties().getSubscriptionName();
+				String updatedValue = (subscriptionName != null) ? subscriptionName + valueToAppend : valueToAppend;
+				containerFactory.getContainerProperties().setSubscriptionName(updatedValue);
+			}
+
 		}
 
 	}
@@ -531,11 +643,21 @@ class PulsarAutoConfigurationTests {
 		@Test
 		void injectsExpectedBeans() {
 			this.contextRunner.run((context) -> assertThat(context).getBean(DefaultPulsarReaderFactory.class)
-				.hasFieldOrPropertyWithValue("pulsarClient", context.getBean(PulsarClient.class)));
+				.hasFieldOrPropertyWithValue("pulsarClient", context.getBean(PulsarClient.class))
+				.extracting("topicBuilder")
+				.isNotNull());
 		}
 
 		@Test
-		<T> void whenHasUserDefinedCustomizersAppliesInCorrectOrder() {
+		void hasNoTopicBuilderWhenTopicDefaultsAreDisabled() {
+			this.contextRunner.withPropertyValues("spring.pulsar.defaults.topic.enabled=false")
+				.run((context) -> assertThat(context).getBean(DefaultPulsarReaderFactory.class)
+					.extracting("topicBuilder")
+					.isNull());
+		}
+
+		@Test
+		<T> void whenHasUserDefinedReaderBuilderCustomizersAppliesInCorrectOrder() {
 			this.contextRunner.withPropertyValues("spring.pulsar.reader.name=fromPropsCustomizer")
 				.withUserConfiguration(ReaderBuilderCustomizersConfig.class)
 				.run((context) -> {
@@ -555,6 +677,10 @@ class PulsarAutoConfigurationTests {
 					.getBean(DefaultPulsarReaderContainerFactory.class);
 				assertThat(factory.getContainerProperties().getReaderTaskExecutor())
 					.isInstanceOf(VirtualThreadTaskExecutor.class);
+				Object taskExecutor = factory.getContainerProperties().getReaderTaskExecutor();
+				Object virtualThread = ReflectionTestUtils.getField(taskExecutor, "virtualThreadFactory");
+				Thread threadCreated = ((ThreadFactory) virtualThread).newThread(mock(Runnable.class));
+				assertThat(threadCreated.getName()).containsPattern("pulsar-reader-[0-9]+");
 			});
 		}
 
@@ -566,6 +692,13 @@ class PulsarAutoConfigurationTests {
 					.getBean(DefaultPulsarReaderContainerFactory.class);
 				assertThat(factory.getContainerProperties().getReaderTaskExecutor()).isNull();
 			});
+		}
+
+		@Test
+		void whenHasUserDefinedFactoryCustomizersAppliesInCorrectOrder() {
+			this.contextRunner.withUserConfiguration(ReaderContainerFactoryCustomizersConfig.class)
+				.run((context) -> assertThat(context).getBean(DefaultPulsarReaderContainerFactory.class)
+					.hasFieldOrPropertyWithValue("containerProperties.readerListener", ":bar:foo"));
 		}
 
 		@TestConfiguration(proxyBeanMethods = false)
@@ -583,6 +716,71 @@ class PulsarAutoConfigurationTests {
 				return (builder) -> builder.readerName("fromCustomizer1");
 			}
 
+		}
+
+		@TestConfiguration(proxyBeanMethods = false)
+		static class ReaderContainerFactoryCustomizersConfig {
+
+			@Bean
+			@Order(50)
+			PulsarContainerFactoryCustomizer<DefaultReactivePulsarListenerContainerFactory<?>> customizerIgnored() {
+				return (containerFactory) -> {
+					throw new IllegalStateException("should-not-have-matched");
+				};
+			}
+
+			@Bean
+			@Order(200)
+			PulsarContainerFactoryCustomizer<DefaultPulsarReaderContainerFactory<?>> customizerFoo() {
+				return (containerFactory) -> appendToReaderListener(containerFactory, ":foo");
+			}
+
+			@Bean
+			@Order(100)
+			PulsarContainerFactoryCustomizer<DefaultPulsarReaderContainerFactory<?>> customizerBar() {
+				return (containerFactory) -> appendToReaderListener(containerFactory, ":bar");
+			}
+
+			private void appendToReaderListener(DefaultPulsarReaderContainerFactory<?> containerFactory,
+					String valueToAppend) {
+				Object readerListener = containerFactory.getContainerProperties().getReaderListener();
+				String updatedValue = (readerListener != null) ? readerListener + valueToAppend : valueToAppend;
+				containerFactory.getContainerProperties().setReaderListener(updatedValue);
+			}
+
+		}
+
+	}
+
+	@Nested
+	class TransactionManagerTests {
+
+		private final ApplicationContextRunner contextRunner = PulsarAutoConfigurationTests.this.contextRunner;
+
+		@Test
+		@SuppressWarnings("unchecked")
+		void whenUserHasDefinedATransactionManagerTheAutoConfigurationBacksOff() {
+			PulsarAwareTransactionManager txnMgr = mock(PulsarAwareTransactionManager.class);
+			this.contextRunner.withBean("customTransactionManager", PulsarAwareTransactionManager.class, () -> txnMgr)
+				.run((context) -> assertThat(context).getBean(PulsarAwareTransactionManager.class).isSameAs(txnMgr));
+		}
+
+		@Test
+		void whenNoPropertiesAreSetTransactionManagerShouldNotBeDefined() {
+			this.contextRunner
+				.run((context) -> assertThat(context).doesNotHaveBean(PulsarAwareTransactionManager.class));
+		}
+
+		@Test
+		void whenTransactionEnabledFalseTransactionManagerIsNotAutoConfigured() {
+			this.contextRunner.withPropertyValues("spring.pulsar.transaction.enabled=false")
+				.run((context) -> assertThat(context).doesNotHaveBean(PulsarAwareTransactionManager.class));
+		}
+
+		@Test
+		void whenTransactionEnabledTrueTransactionManagerIsAutoConfigured() {
+			this.contextRunner.withPropertyValues("spring.pulsar.transaction.enabled=true")
+				.run((context) -> assertThat(context).hasSingleBean(PulsarAwareTransactionManager.class));
 		}
 
 	}

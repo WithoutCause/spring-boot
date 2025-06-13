@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -162,7 +162,18 @@ class NestedPathTests {
 
 	@Test
 	void toUriReturnsUri() throws Exception {
-		assertThat(this.path.toUri()).isEqualTo(new URI("nested:" + this.jarPath.toUri().getPath() + "/!nested.jar"));
+		assertThat(this.path.toUri())
+			.isEqualTo(new URI("nested:" + this.jarPath.toUri().getRawPath() + "/!nested.jar"));
+	}
+
+	@Test
+	void toUriWhenHasSpecialCharsReturnsEncodedUri() throws Exception {
+		this.jarPath = new File(this.temp, "te st.jar").toPath();
+		this.provider = new NestedFileSystemProvider();
+		this.fileSystem = new NestedFileSystem(this.provider, this.jarPath);
+		this.path = new NestedPath(this.fileSystem, "ne sted.jar");
+		assertThat(this.path.toUri())
+			.isEqualTo(new URI("nested:" + this.jarPath.toUri().getRawPath() + "/!ne%20sted.jar"));
 	}
 
 	@Test
@@ -197,7 +208,7 @@ class NestedPathTests {
 		NestedPath p2 = new NestedPath(this.fileSystem, "a.jar");
 		NestedPath p3 = new NestedPath(this.fileSystem, "c.jar");
 		NestedPath p4 = new NestedPath(fs2, "c.jar");
-		assertThat(p1.hashCode()).isEqualTo(p2.hashCode());
+		assertThat(p1).hasSameHashCodeAs(p2);
 		assertThat(p1).isEqualTo(p1).isEqualTo(p2).isNotEqualTo(p3).isNotEqualTo(p4);
 	}
 

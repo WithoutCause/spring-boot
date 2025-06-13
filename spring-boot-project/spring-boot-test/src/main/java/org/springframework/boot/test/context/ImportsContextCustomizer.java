@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -204,6 +204,7 @@ class ImportsContextCustomizer implements ContextCustomizer {
 				registry.removeBeanDefinition(ImportsConfiguration.BEAN_NAME);
 			}
 			catch (NoSuchBeanDefinitionException ex) {
+				// Ignore
 			}
 		}
 
@@ -239,8 +240,7 @@ class ImportsContextCustomizer implements ContextCustomizer {
 				this.key = Collections.unmodifiableSet(synthesize(annotations));
 			}
 			else {
-				Set<Object> key = new HashSet<>();
-				key.addAll(determinedImports);
+				Set<Object> key = new HashSet<>(determinedImports);
 				Set<Annotation> componentScanning = annotations.stream()
 					.filter((annotation) -> annotation.getType().equals(ComponentScan.class))
 					.map(MergedAnnotation::synthesize)

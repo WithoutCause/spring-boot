@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.springframework.boot.testcontainers.service.connection;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +34,7 @@ import org.springframework.boot.testcontainers.service.connection.ContainerConne
 import org.springframework.core.annotation.MergedAnnotation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.Mockito.mock;
 
@@ -62,7 +65,7 @@ class ContainerConnectionDetailsFactoryTests {
 		this.annotation = MergedAnnotation.of(ServiceConnection.class,
 				Map.of("name", "myname", "type", new Class<?>[0]));
 		this.source = new ContainerConnectionSource<>(this.beanNameSuffix, this.origin, PostgreSQLContainer.class,
-				this.container.getDockerImageName(), this.annotation, () -> this.container);
+				this.container.getDockerImageName(), this.annotation, () -> this.container, null, null);
 	}
 
 	@Test
@@ -80,8 +83,24 @@ class ContainerConnectionDetailsFactoryTests {
 	}
 
 	@Test
+	void getConnectionDetailsWhenTypesMatchAndNameRestrictionsMatchReturnsDetails() {
+		TestContainerConnectionDetailsFactory factory = new TestContainerConnectionDetailsFactory(
+				List.of("notmyname", "myname"));
+		ConnectionDetails connectionDetails = getConnectionDetails(factory, this.source);
+		assertThat(connectionDetails).isNotNull();
+	}
+
+	@Test
 	void getConnectionDetailsWhenTypesMatchAndNameRestrictionDoesNotMatchReturnsNull() {
 		TestContainerConnectionDetailsFactory factory = new TestContainerConnectionDetailsFactory("notmyname");
+		ConnectionDetails connectionDetails = getConnectionDetails(factory, this.source);
+		assertThat(connectionDetails).isNull();
+	}
+
+	@Test
+	void getConnectionDetailsWhenTypesMatchAndNameRestrictionsDoNotMatchReturnsNull() {
+		TestContainerConnectionDetailsFactory factory = new TestContainerConnectionDetailsFactory(
+				List.of("notmyname", "alsonotmyname"));
 		ConnectionDetails connectionDetails = getConnectionDetails(factory, this.source);
 		assertThat(connectionDetails).isNull();
 	}
@@ -90,7 +109,8 @@ class ContainerConnectionDetailsFactoryTests {
 	void getConnectionDetailsWhenContainerTypeDoesNotMatchReturnsNull() {
 		ElasticsearchContainer container = mock(ElasticsearchContainer.class);
 		ContainerConnectionSource<?> source = new ContainerConnectionSource<>(this.beanNameSuffix, this.origin,
-				ElasticsearchContainer.class, container.getDockerImageName(), this.annotation, () -> container);
+				ElasticsearchContainer.class, container.getDockerImageName(), this.annotation, () -> container, null,
+				null);
 		TestContainerConnectionDetailsFactory factory = new TestContainerConnectionDetailsFactory();
 		ConnectionDetails connectionDetails = getConnectionDetails(factory, source);
 		assertThat(connectionDetails).isNull();
@@ -107,7 +127,7 @@ class ContainerConnectionDetailsFactoryTests {
 	void getContainerWhenNotInitializedThrowsException() {
 		TestContainerConnectionDetailsFactory factory = new TestContainerConnectionDetailsFactory();
 		TestContainerConnectionDetails connectionDetails = getConnectionDetails(factory, this.source);
-		assertThatIllegalStateException().isThrownBy(() -> connectionDetails.callGetContainer())
+		assertThatIllegalStateException().isThrownBy(connectionDetails::callGetContainer)
 			.withMessage("Container cannot be obtained before the connection details bean has been initialized");
 	}
 
@@ -117,6 +137,18 @@ class ContainerConnectionDetailsFactoryTests {
 		TestContainerConnectionDetails connectionDetails = getConnectionDetails(factory, this.source);
 		connectionDetails.afterPropertiesSet();
 		assertThat(connectionDetails.callGetContainer()).isSameAs(this.container);
+	}
+
+	@Test
+	void creatingFactoryWithEmptyNamesThrows() {
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> new TestContainerConnectionDetailsFactory(Collections.emptyList()));
+	}
+
+	@Test
+	void creatingFactoryWithNullNamesThrows() {
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> new TestContainerConnectionDetailsFactory((List<String>) null));
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -137,6 +169,10 @@ class ContainerConnectionDetailsFactoryTests {
 
 		TestContainerConnectionDetailsFactory(String connectionName) {
 			super(connectionName);
+		}
+
+		TestContainerConnectionDetailsFactory(List<String> connectionNames) {
+			super(connectionNames);
 		}
 
 		@Override

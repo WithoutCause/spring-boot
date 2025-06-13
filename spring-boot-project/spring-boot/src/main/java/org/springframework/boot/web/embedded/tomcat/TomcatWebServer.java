@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ public class TomcatWebServer implements WebServer {
 	 * @since 2.3.0
 	 */
 	public TomcatWebServer(Tomcat tomcat, boolean autoStart, Shutdown shutdown) {
-		Assert.notNull(tomcat, "Tomcat Server must not be null");
+		Assert.notNull(tomcat, "'tomcat' must not be null");
 		this.tomcat = tomcat;
 		this.autoStart = autoStart;
 		this.gracefulShutdown = (shutdown == Shutdown.GRACEFUL) ? new GracefulShutdown(tomcat) : null;
@@ -416,7 +416,7 @@ public class TomcatWebServer implements WebServer {
 			.map(TomcatEmbeddedContext.class::cast)
 			.filter(this::imperative)
 			.map(TomcatEmbeddedContext::getPath)
-			.map((path) -> path.equals("") ? "/" : path)
+			.map((path) -> path.isEmpty() ? "/" : path)
 			.collect(Collectors.joining(" "));
 		return StringUtils.hasText(contextPath) ? contextPath : null;
 	}
@@ -441,6 +441,14 @@ public class TomcatWebServer implements WebServer {
 		return this.tomcat;
 	}
 
+	/**
+	 * Initiates a graceful shutdown of the Tomcat web server. Handling of new requests is
+	 * prevented and the given {@code callback} is invoked at the end of the attempt. The
+	 * attempt can be explicitly ended by invoking {@link #stop}.
+	 * <p>
+	 * Once shutdown has been initiated Tomcat will reject any new connections. Requests
+	 * on existing idle connections will also be rejected.
+	 */
 	@Override
 	public void shutDownGracefully(GracefulShutdownCallback callback) {
 		if (this.gracefulShutdown == null) {

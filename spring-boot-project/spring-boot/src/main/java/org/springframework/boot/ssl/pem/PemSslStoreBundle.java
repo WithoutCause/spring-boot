@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,11 +24,14 @@ import java.security.PrivateKey;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.List;
+import java.util.function.Supplier;
 
 import org.springframework.boot.ssl.SslStoreBundle;
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.util.Assert;
+import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
+import org.springframework.util.function.SingletonSupplier;
 
 /**
  * {@link SslStoreBundle} backed by PEM-encoded certificates and private keys.
@@ -42,9 +45,9 @@ public class PemSslStoreBundle implements SslStoreBundle {
 
 	private static final String DEFAULT_ALIAS = "ssl";
 
-	private final KeyStore keyStore;
+	private final Supplier<KeyStore> keyStore;
 
-	private final KeyStore trustStore;
+	private final Supplier<KeyStore> trustStore;
 
 	/**
 	 * Create a new {@link PemSslStoreBundle} instance.
@@ -52,22 +55,7 @@ public class PemSslStoreBundle implements SslStoreBundle {
 	 * @param trustStoreDetails the trust store details
 	 */
 	public PemSslStoreBundle(PemSslStoreDetails keyStoreDetails, PemSslStoreDetails trustStoreDetails) {
-		this(keyStoreDetails, trustStoreDetails, null);
-	}
-
-	/**
-	 * Create a new {@link PemSslStoreBundle} instance.
-	 * @param keyStoreDetails the key store details
-	 * @param trustStoreDetails the trust store details
-	 * @param alias the alias to use or {@code null} to use a default alias
-	 * @deprecated since 3.2.0 for removal in 3.4.0 in favor of
-	 * {@link PemSslStoreDetails#alias()} in the {@code keyStoreDetails} and
-	 * {@code trustStoreDetails}
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public PemSslStoreBundle(PemSslStoreDetails keyStoreDetails, PemSslStoreDetails trustStoreDetails, String alias) {
-		this.keyStore = createKeyStore("key", PemSslStore.load(keyStoreDetails), alias);
-		this.trustStore = createKeyStore("trust", PemSslStore.load(trustStoreDetails), alias);
+		this(PemSslStore.load(keyStoreDetails), PemSslStore.load(trustStoreDetails));
 	}
 
 	/**
@@ -77,17 +65,13 @@ public class PemSslStoreBundle implements SslStoreBundle {
 	 * @since 3.2.0
 	 */
 	public PemSslStoreBundle(PemSslStore pemKeyStore, PemSslStore pemTrustStore) {
-		this(pemKeyStore, pemTrustStore, null);
-	}
-
-	private PemSslStoreBundle(PemSslStore pemKeyStore, PemSslStore pemTrustStore, String alias) {
-		this.keyStore = createKeyStore("key", pemKeyStore, alias);
-		this.trustStore = createKeyStore("trust", pemTrustStore, alias);
+		this.keyStore = SingletonSupplier.of(() -> createKeyStore("key", pemKeyStore));
+		this.trustStore = SingletonSupplier.of(() -> createKeyStore("trust", pemTrustStore));
 	}
 
 	@Override
 	public KeyStore getKeyStore() {
-		return this.keyStore;
+		return this.keyStore.get();
 	}
 
 	@Override
@@ -97,19 +81,18 @@ public class PemSslStoreBundle implements SslStoreBundle {
 
 	@Override
 	public KeyStore getTrustStore() {
-		return this.trustStore;
+		return this.trustStore.get();
 	}
 
-	private static KeyStore createKeyStore(String name, PemSslStore pemSslStore, String alias) {
+	private static KeyStore createKeyStore(String name, PemSslStore pemSslStore) {
 		if (pemSslStore == null) {
 			return null;
 		}
 		try {
-			Assert.notEmpty(pemSslStore.certificates(), "Certificates must not be empty");
-			alias = (pemSslStore.alias() != null) ? pemSslStore.alias() : alias;
-			alias = (alias != null) ? alias : DEFAULT_ALIAS;
-			KeyStore store = createKeyStore(pemSslStore.type());
 			List<X509Certificate> certificates = pemSslStore.certificates();
+			Assert.state(!ObjectUtils.isEmpty(certificates), "Certificates must not be empty");
+			String alias = (pemSslStore.alias() != null) ? pemSslStore.alias() : DEFAULT_ALIAS;
+			KeyStore store = createKeyStore(pemSslStore.type());
 			PrivateKey privateKey = pemSslStore.privateKey();
 			if (privateKey != null) {
 				addPrivateKey(store, privateKey, alias, pemSslStore.password(), certificates);
@@ -149,9 +132,11 @@ public class PemSslStoreBundle implements SslStoreBundle {
 	@Override
 	public String toString() {
 		ToStringCreator creator = new ToStringCreator(this);
-		creator.append("keyStore.type", (this.keyStore != null) ? this.keyStore.getType() : "none");
+		KeyStore keyStore = this.keyStore.get();
+		KeyStore trustStore = this.trustStore.get();
+		creator.append("keyStore.type", (keyStore != null) ? keyStore.getType() : "none");
 		creator.append("keyStorePassword", null);
-		creator.append("trustStore.type", (this.trustStore != null) ? this.trustStore.getType() : "none");
+		creator.append("trustStore.type", (trustStore != null) ? trustStore.getType() : "none");
 		return creator.toString();
 	}
 

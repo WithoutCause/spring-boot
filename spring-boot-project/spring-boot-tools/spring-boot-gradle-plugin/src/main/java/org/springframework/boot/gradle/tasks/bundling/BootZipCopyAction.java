@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.lang.reflect.Method;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Collection;
@@ -96,7 +95,7 @@ class BootZipCopyAction implements CopyAction {
 
 	private final boolean includeDefaultLoader;
 
-	private final String layerToolsLocation;
+	private final String jarmodeToolsLocation;
 
 	private final Spec<FileTreeElement> requiresUnpack;
 
@@ -119,7 +118,7 @@ class BootZipCopyAction implements CopyAction {
 	private final LoaderImplementation loaderImplementation;
 
 	BootZipCopyAction(File output, Manifest manifest, boolean preserveFileTimestamps, Integer dirMode, Integer fileMode,
-			boolean includeDefaultLoader, String layerToolsLocation, Spec<FileTreeElement> requiresUnpack,
+			boolean includeDefaultLoader, String jarmodeToolsLocation, Spec<FileTreeElement> requiresUnpack,
 			Spec<FileTreeElement> exclusions, LaunchScriptConfiguration launchScript, Spec<FileCopyDetails> librarySpec,
 			Function<FileCopyDetails, ZipCompression> compressionResolver, String encoding,
 			ResolvedDependencies resolvedDependencies, boolean supportsSignatureFile, LayerResolver layerResolver,
@@ -130,7 +129,7 @@ class BootZipCopyAction implements CopyAction {
 		this.dirMode = dirMode;
 		this.fileMode = fileMode;
 		this.includeDefaultLoader = includeDefaultLoader;
-		this.layerToolsLocation = layerToolsLocation;
+		this.jarmodeToolsLocation = jarmodeToolsLocation;
 		this.requiresUnpack = requiresUnpack;
 		this.exclusions = exclusions;
 		this.launchScript = launchScript;
@@ -204,6 +203,7 @@ class BootZipCopyAction implements CopyAction {
 			outputStream.close();
 		}
 		catch (IOException ex) {
+			// Ignore
 		}
 	}
 
@@ -341,15 +341,18 @@ class BootZipCopyAction implements CopyAction {
 		}
 
 		private void writeJarToolsIfNecessary() throws IOException {
-			if (BootZipCopyAction.this.layerToolsLocation != null) {
-				writeJarModeLibrary(BootZipCopyAction.this.layerToolsLocation, JarModeLibrary.LAYER_TOOLS);
+			if (BootZipCopyAction.this.jarmodeToolsLocation != null) {
+				writeJarModeLibrary(BootZipCopyAction.this.jarmodeToolsLocation, JarModeLibrary.TOOLS);
 			}
 		}
 
 		private void writeJarModeLibrary(String location, JarModeLibrary library) throws IOException {
 			String name = location + library.getName();
-			writeEntry(name, ZipEntryContentWriter.fromInputStream(library.openStream()), false,
-					(entry) -> prepareStoredEntry(library.openStream(), entry));
+			writeEntry(name, ZipEntryContentWriter.fromInputStream(library.openStream()), false, (entry) -> {
+				try (InputStream in = library.openStream()) {
+					prepareStoredEntry(library.openStream(), entry);
+				}
+			});
 			if (BootZipCopyAction.this.layerResolver != null) {
 				Layer layer = BootZipCopyAction.this.layerResolver.getLayer(library);
 				this.layerIndex.add(layer, name);
@@ -487,17 +490,12 @@ class BootZipCopyAction implements CopyAction {
 		}
 
 		private int getPermissions(FileCopyDetails details) {
-			if (GradleVersion.current().compareTo(GradleVersion.version("8.3")) >= 0) {
-				try {
-					Method getPermissionsMethod = details.getClass().getMethod("getPermissions");
-					getPermissionsMethod.setAccessible(true);
-					Object permissions = getPermissionsMethod.invoke(details);
-					return (int) permissions.getClass().getMethod("toUnixNumeric").invoke(permissions);
-				}
-				catch (Exception ex) {
-					throw new GradleException("Failed to get permissions", ex);
-				}
-			}
+			return (GradleVersion.current().compareTo(GradleVersion.version("8.3")) >= 0)
+					? details.getPermissions().toUnixNumeric() : getMode(details);
+		}
+
+		@SuppressWarnings("deprecation")
+		private int getMode(FileCopyDetails details) {
 			return details.getMode();
 		}
 

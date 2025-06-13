@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.function.Supplier;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.testcontainers.containers.Container;
 
 import org.springframework.beans.BeansException;
@@ -30,16 +32,21 @@ import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.boot.context.properties.bind.BindResult;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.testcontainers.lifecycle.BeforeTestcontainerUsedEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationEventPublisherAware;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.EnumerablePropertySource;
 import org.springframework.core.env.Environment;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.PropertySource;
+import org.springframework.test.context.DynamicPropertyRegistrar;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.util.Assert;
-import org.springframework.util.StringUtils;
+import org.springframework.util.function.SupplierUtils;
 
 /**
  * {@link EnumerablePropertySource} backed by a map with values supplied from one or more
@@ -47,8 +54,14 @@ import org.springframework.util.StringUtils;
  *
  * @author Phillip Webb
  * @since 3.1.0
+ * @deprecated since 3.4.0 for removal in 4.0.0 in favor of declaring one or more
+ * {@link DynamicPropertyRegistrar} beans.
  */
-public class TestcontainersPropertySource extends EnumerablePropertySource<Map<String, Supplier<Object>>> {
+@SuppressWarnings("removal")
+@Deprecated(since = "3.4.0", forRemoval = true)
+public class TestcontainersPropertySource extends MapPropertySource {
+
+	private static final Log logger = LogFactory.getLog(TestcontainersPropertySource.class);
 
 	static final String NAME = "testcontainersPropertySource";
 
@@ -56,14 +69,16 @@ public class TestcontainersPropertySource extends EnumerablePropertySource<Map<S
 
 	private final Set<ApplicationEventPublisher> eventPublishers = new CopyOnWriteArraySet<>();
 
-	TestcontainersPropertySource() {
-		this(Collections.synchronizedMap(new LinkedHashMap<>()));
+	TestcontainersPropertySource(DynamicPropertyRegistryInjection registryInjection) {
+		this(Collections.synchronizedMap(new LinkedHashMap<>()), registryInjection);
 	}
 
-	private TestcontainersPropertySource(Map<String, Supplier<Object>> valueSuppliers) {
+	private TestcontainersPropertySource(Map<String, Supplier<Object>> valueSuppliers,
+			DynamicPropertyRegistryInjection registryInjection) {
 		super(NAME, Collections.unmodifiableMap(valueSuppliers));
 		this.registry = (name, valueSupplier) -> {
-			Assert.hasText(name, "'name' must not be null or blank");
+			Assert.hasText(name, "'name' must not be empty");
+			DynamicPropertyRegistryInjectionException.throwIfNecessary(name, registryInjection);
 			Assert.notNull(valueSupplier, "'valueSupplier' must not be null");
 			valueSuppliers.put(name, valueSupplier);
 		};
@@ -75,24 +90,14 @@ public class TestcontainersPropertySource extends EnumerablePropertySource<Map<S
 
 	@Override
 	public Object getProperty(String name) {
-		Supplier<Object> valueSupplier = this.source.get(name);
+		Object valueSupplier = this.source.get(name);
 		return (valueSupplier != null) ? getProperty(name, valueSupplier) : null;
 	}
 
-	private Object getProperty(String name, Supplier<Object> valueSupplier) {
-		BeforeTestcontainersPropertySuppliedEvent event = new BeforeTestcontainersPropertySuppliedEvent(this, name);
+	private Object getProperty(String name, Object valueSupplier) {
+		BeforeTestcontainerUsedEvent event = new BeforeTestcontainerUsedEvent(this);
 		this.eventPublishers.forEach((eventPublisher) -> eventPublisher.publishEvent(event));
-		return valueSupplier.get();
-	}
-
-	@Override
-	public boolean containsProperty(String name) {
-		return this.source.containsKey(name);
-	}
-
-	@Override
-	public String[] getPropertyNames() {
-		return StringUtils.toStringArray(this.source.keySet());
+		return SupplierUtils.resolve(valueSupplier);
 	}
 
 	public static DynamicPropertyRegistry attach(Environment environment) {
@@ -125,11 +130,16 @@ public class TestcontainersPropertySource extends EnumerablePropertySource<Map<S
 	static TestcontainersPropertySource getOrAdd(ConfigurableEnvironment environment) {
 		PropertySource<?> propertySource = environment.getPropertySources().get(NAME);
 		if (propertySource == null) {
-			environment.getPropertySources().addFirst(new TestcontainersPropertySource());
+			BindResult<DynamicPropertyRegistryInjection> bindingResult = Binder.get(environment)
+				.bind("spring.testcontainers.dynamic-property-registry-injection",
+						DynamicPropertyRegistryInjection.class);
+			environment.getPropertySources()
+				.addFirst(
+						new TestcontainersPropertySource(bindingResult.orElse(DynamicPropertyRegistryInjection.FAIL)));
 			return getOrAdd(environment);
 		}
 		Assert.state(propertySource instanceof TestcontainersPropertySource,
-				"Incorrect DynamicValuesPropertySource type registered");
+				"Incorrect TestcontainersPropertySource type registered");
 		return ((TestcontainersPropertySource) propertySource);
 	}
 
@@ -160,6 +170,36 @@ public class TestcontainersPropertySource extends EnumerablePropertySource<Map<S
 			if (this.eventPublisher != null) {
 				TestcontainersPropertySource.getOrAdd((ConfigurableEnvironment) this.environment)
 					.addEventPublisher(this.eventPublisher);
+			}
+		}
+
+	}
+
+	private enum DynamicPropertyRegistryInjection {
+
+		ALLOW,
+
+		FAIL,
+
+		WARN
+
+	}
+
+	static final class DynamicPropertyRegistryInjectionException extends RuntimeException {
+
+		private DynamicPropertyRegistryInjectionException(String propertyName) {
+			super("Support for injecting a DynamicPropertyRegistry into @Bean methods is deprecated. Register '"
+					+ propertyName + "' using a DynamicPropertyRegistrar bean instead. Alternatively, set "
+					+ "spring.testcontainers.dynamic-property-registry-injection to 'warn' to replace this "
+					+ "failure with a warning or to 'allow' to permit injection of the registry.");
+		}
+
+		private static void throwIfNecessary(String propertyName, DynamicPropertyRegistryInjection registryInjection) {
+			switch (registryInjection) {
+				case FAIL -> throw new DynamicPropertyRegistryInjectionException(propertyName);
+				case WARN -> logger
+					.warn("Support for injecting a DynamicPropertyRegistry into @Bean methods is deprecated. Register '"
+							+ propertyName + "' using a DynamicPropertyRegistrar bean instead.");
 			}
 		}
 

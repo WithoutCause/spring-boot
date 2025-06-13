@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,12 @@
 package org.springframework.boot.autoconfigure.web.servlet;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.DeprecatedConfigurationProperty;
 import org.springframework.http.MediaType;
 import org.springframework.util.Assert;
 import org.springframework.validation.DefaultMessageCodesResolver;
@@ -37,7 +38,7 @@ import org.springframework.validation.DefaultMessageCodesResolver;
  * @author Vedran Pavic
  * @since 2.0.0
  */
-@ConfigurationProperties(prefix = "spring.mvc")
+@ConfigurationProperties("spring.mvc")
 public class WebMvcProperties {
 
 	/**
@@ -61,14 +62,6 @@ public class WebMvcProperties {
 	 * Whether to publish a ServletRequestHandledEvent at the end of each request.
 	 */
 	private boolean publishRequestHandledEvents = true;
-
-	/**
-	 * Whether a "NoHandlerFoundException" should be thrown if no Handler was found to
-	 * process a request.
-	 * @deprecated since 3.2.0 for removal in 3.4.0
-	 */
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	private boolean throwExceptionIfNoHandlerFound = true;
 
 	/**
 	 * Whether logging of (potentially sensitive) request details at DEBUG and TRACE level
@@ -122,19 +115,6 @@ public class WebMvcProperties {
 
 	public void setPublishRequestHandledEvents(boolean publishRequestHandledEvents) {
 		this.publishRequestHandledEvents = publishRequestHandledEvents;
-	}
-
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	@DeprecatedConfigurationProperty(
-			reason = "DispatcherServlet property is deprecated for removal and should no longer need to be configured",
-			since = "3.2.0")
-	public boolean isThrowExceptionIfNoHandlerFound() {
-		return this.throwExceptionIfNoHandlerFound;
-	}
-
-	@Deprecated(since = "3.2.0", forRemoval = true)
-	public void setThrowExceptionIfNoHandlerFound(boolean throwExceptionIfNoHandlerFound) {
-		this.throwExceptionIfNoHandlerFound = throwExceptionIfNoHandlerFound;
 	}
 
 	public boolean isLogRequestDetails() {
@@ -245,8 +225,8 @@ public class WebMvcProperties {
 		}
 
 		public void setPath(String path) {
-			Assert.notNull(path, "Path must not be null");
-			Assert.isTrue(!path.contains("*"), "Path must not contain wildcards");
+			Assert.notNull(path, "'path' must not be null");
+			Assert.isTrue(!path.contains("*"), "'path' must not contain wildcards");
 			this.path = path;
 		}
 
@@ -259,7 +239,7 @@ public class WebMvcProperties {
 		}
 
 		public String getServletMapping() {
-			if (this.path.equals("") || this.path.equals("/")) {
+			if (this.path.isEmpty() || this.path.equals("/")) {
 				return "/";
 			}
 			if (this.path.endsWith("/")) {
@@ -329,15 +309,21 @@ public class WebMvcProperties {
 		private boolean favorParameter = false;
 
 		/**
+		 * Query parameter name to use when "favor-parameter" is enabled.
+		 */
+		private String parameterName;
+
+		/**
 		 * Map file extensions to media types for content negotiation. For instance, yml
 		 * to text/yaml.
 		 */
 		private Map<String, MediaType> mediaTypes = new LinkedHashMap<>();
 
 		/**
-		 * Query parameter name to use when "favor-parameter" is enabled.
+		 * List of default content types to be used when no specific content type is
+		 * requested.
 		 */
-		private String parameterName;
+		private List<MediaType> defaultContentTypes = new ArrayList<>();
 
 		public boolean isFavorParameter() {
 			return this.favorParameter;
@@ -345,6 +331,14 @@ public class WebMvcProperties {
 
 		public void setFavorParameter(boolean favorParameter) {
 			this.favorParameter = favorParameter;
+		}
+
+		public String getParameterName() {
+			return this.parameterName;
+		}
+
+		public void setParameterName(String parameterName) {
+			this.parameterName = parameterName;
 		}
 
 		public Map<String, MediaType> getMediaTypes() {
@@ -355,12 +349,12 @@ public class WebMvcProperties {
 			this.mediaTypes = mediaTypes;
 		}
 
-		public String getParameterName() {
-			return this.parameterName;
+		public List<MediaType> getDefaultContentTypes() {
+			return this.defaultContentTypes;
 		}
 
-		public void setParameterName(String parameterName) {
-			this.parameterName = parameterName;
+		public void setDefaultContentTypes(List<MediaType> defaultContentTypes) {
+			this.defaultContentTypes = defaultContentTypes;
 		}
 
 	}
@@ -385,17 +379,20 @@ public class WebMvcProperties {
 	public static class Format {
 
 		/**
-		 * Date format to use, for example 'dd/MM/yyyy'.
+		 * Date format to use, for example 'dd/MM/yyyy'. Used for formatting of
+		 * java.util.Date and java.time.LocalDate.
 		 */
 		private String date;
 
 		/**
-		 * Time format to use, for example 'HH:mm:ss'.
+		 * Time format to use, for example 'HH:mm:ss'. Used for formatting of java.time's
+		 * LocalTime and OffsetTime.
 		 */
 		private String time;
 
 		/**
-		 * Date-time format to use, for example 'yyyy-MM-dd HH:mm:ss'.
+		 * Date-time format to use, for example 'yyyy-MM-dd HH:mm:ss'. Used for formatting
+		 * of java.time's LocalDateTime, OffsetDateTime, and ZonedDateTime.
 		 */
 		private String dateTime;
 
@@ -447,7 +444,7 @@ public class WebMvcProperties {
 	public static class Problemdetails {
 
 		/**
-		 * Whether RFC 7807 Problem Details support should be enabled.
+		 * Whether RFC 9457 Problem Details support should be enabled.
 		 */
 		private boolean enabled = false;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ import org.springframework.util.Assert;
  * @author Chris Bono
  * @author Phillip Webb
  * @author Swamy Mavuri
+ * @author Vedran Pavic
  * @since 3.2.0
  */
 @ConfigurationProperties("spring.pulsar")
@@ -66,6 +67,8 @@ public class PulsarProperties {
 	private final Reader reader = new Reader();
 
 	private final Template template = new Template();
+
+	private final Transaction transaction = new Transaction();
 
 	public Client getClient() {
 		return this.client;
@@ -103,6 +106,10 @@ public class PulsarProperties {
 		return this.template;
 	}
 
+	public Transaction getTransaction() {
+		return this.transaction;
+	}
+
 	public static class Client {
 
 		/**
@@ -129,6 +136,11 @@ public class PulsarProperties {
 		 * Authentication settings.
 		 */
 		private final Authentication authentication = new Authentication();
+
+		/**
+		 * Thread related configuration.
+		 */
+		private final Threads threads = new Threads();
 
 		/**
 		 * Failover settings.
@@ -169,6 +181,10 @@ public class PulsarProperties {
 
 		public Authentication getAuthentication() {
 			return this.authentication;
+		}
+
+		public Threads getThreads() {
+			return this.threads;
 		}
 
 		public Failover getFailover() {
@@ -251,12 +267,18 @@ public class PulsarProperties {
 		 */
 		private List<TypeMapping> typeMappings = new ArrayList<>();
 
+		private final Topic topic = new Topic();
+
 		public List<TypeMapping> getTypeMappings() {
 			return this.typeMappings;
 		}
 
 		public void setTypeMappings(List<TypeMapping> typeMappings) {
 			this.typeMappings = typeMappings;
+		}
+
+		public Topic getTopic() {
+			return this.topic;
 		}
 
 		/**
@@ -270,9 +292,9 @@ public class PulsarProperties {
 		public record TypeMapping(Class<?> messageType, String topicName, SchemaInfo schemaInfo) {
 
 			public TypeMapping {
-				Assert.notNull(messageType, "messageType must not be null");
+				Assert.notNull(messageType, "'messageType' must not be null");
 				Assert.isTrue(topicName != null || schemaInfo != null,
-						"At least one of topicName or schemaInfo must not be null");
+						"At least one of 'topicName' or 'schemaInfo' must not be null");
 			}
 
 		}
@@ -287,10 +309,42 @@ public class PulsarProperties {
 		public record SchemaInfo(SchemaType schemaType, Class<?> messageKeyType) {
 
 			public SchemaInfo {
-				Assert.notNull(schemaType, "schemaType must not be null");
-				Assert.isTrue(schemaType != SchemaType.NONE, "schemaType 'NONE' not supported");
+				Assert.notNull(schemaType, "'schemaType' must not be null");
+				Assert.isTrue(schemaType != SchemaType.NONE, "'schemaType' must not be NONE");
 				Assert.isTrue(messageKeyType == null || schemaType == SchemaType.KEY_VALUE,
-						"messageKeyType can only be set when schemaType is KEY_VALUE");
+						"'messageKeyType' can only be set when 'schemaType' is KEY_VALUE");
+			}
+
+		}
+
+		public static class Topic {
+
+			/**
+			 * Default tenant to use when producing or consuming messages against a
+			 * non-fully-qualified topic URL.
+			 */
+			private String tenant = "public";
+
+			/**
+			 * Default namespace to use when producing or consuming messages against a
+			 * non-fully-qualified topic URL.
+			 */
+			private String namespace = "default";
+
+			public String getTenant() {
+				return this.tenant;
+			}
+
+			public void setTenant(String tenant) {
+				this.tenant = tenant;
+			}
+
+			public String getNamespace() {
+				return this.namespace;
+			}
+
+			public void setNamespace(String namespace) {
+				this.namespace = namespace;
 			}
 
 		}
@@ -758,6 +812,11 @@ public class PulsarProperties {
 		private SchemaType schemaType;
 
 		/**
+		 * Number of threads used by listener container.
+		 */
+		private Integer concurrency;
+
+		/**
 		 * Whether to record observations for when the Observations API is available and
 		 * the client supports it.
 		 */
@@ -769,6 +828,14 @@ public class PulsarProperties {
 
 		public void setSchemaType(SchemaType schemaType) {
 			this.schemaType = schemaType;
+		}
+
+		public Integer getConcurrency() {
+			return this.concurrency;
+		}
+
+		public void setConcurrency(Integer concurrency) {
+			this.concurrency = concurrency;
 		}
 
 		public boolean isObservationEnabled() {
@@ -868,6 +935,23 @@ public class PulsarProperties {
 
 	}
 
+	public static class Transaction {
+
+		/**
+		 * Whether transaction support is enabled.
+		 */
+		private boolean enabled;
+
+		public boolean isEnabled() {
+			return this.enabled;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
+		}
+
+	}
+
 	public static class Authentication {
 
 		/**
@@ -898,18 +982,48 @@ public class PulsarProperties {
 
 	}
 
+	public static class Threads {
+
+		/**
+		 * Number of threads to be used for handling connections to brokers.
+		 */
+		private Integer io;
+
+		/**
+		 * Number of threads to be used for message listeners.
+		 */
+		private Integer listener;
+
+		public Integer getIo() {
+			return this.io;
+		}
+
+		public void setIo(Integer io) {
+			this.io = io;
+		}
+
+		public Integer getListener() {
+			return this.listener;
+		}
+
+		public void setListener(Integer listener) {
+			this.listener = listener;
+		}
+
+	}
+
 	public static class Failover {
 
 		/**
-		 * Cluster Failover Policy.
+		 * Cluster failover policy.
 		 */
-		private FailoverPolicy failoverPolicy = FailoverPolicy.ORDER;
+		private FailoverPolicy policy = FailoverPolicy.ORDER;
 
 		/**
 		 * Delay before the Pulsar client switches from the primary cluster to the backup
 		 * cluster.
 		 */
-		private Duration failOverDelay;
+		private Duration delay;
 
 		/**
 		 * Delay before the Pulsar client switches from the backup cluster to the primary
@@ -923,26 +1037,26 @@ public class PulsarProperties {
 		private Duration checkInterval;
 
 		/**
-		 * List of backupClusters The backup cluster is chosen in the sequence of the
+		 * List of backup clusters. The backup cluster is chosen in the sequence of the
 		 * given list. If all backup clusters are available, the Pulsar client chooses the
 		 * first backup cluster.
 		 */
 		private List<BackupCluster> backupClusters = new ArrayList<>();
 
-		public FailoverPolicy getFailoverPolicy() {
-			return this.failoverPolicy;
+		public FailoverPolicy getPolicy() {
+			return this.policy;
 		}
 
-		public void setFailoverPolicy(FailoverPolicy failoverPolicy) {
-			this.failoverPolicy = failoverPolicy;
+		public void setPolicy(FailoverPolicy policy) {
+			this.policy = policy;
 		}
 
-		public Duration getFailOverDelay() {
-			return this.failOverDelay;
+		public Duration getDelay() {
+			return this.delay;
 		}
 
-		public void setFailOverDelay(Duration failOverDelay) {
-			this.failOverDelay = failOverDelay;
+		public void setDelay(Duration delay) {
+			this.delay = delay;
 		}
 
 		public Duration getSwitchBackDelay() {

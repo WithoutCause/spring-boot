@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,19 @@ import org.springframework.util.StringUtils;
  * @author Moritz Halbritter
  * @author Andy Wilkinson
  * @author Phillip Webb
+ * @author Scott Frederick
+ * @author Sidmar Theodoro
+ * @author He Zean
  */
 class PostgresEnvironment {
+
+	private static final String[] USERNAME_KEYS = new String[] { "POSTGRES_USER", "POSTGRESQL_USER",
+			"POSTGRESQL_USERNAME" };
+
+	private static final String DEFAULT_USERNAME = "postgres";
+
+	private static final String[] DATABASE_KEYS = new String[] { "POSTGRES_DB", "POSTGRESQL_DB",
+			"POSTGRESQL_DATABASE" };
 
 	private final String username;
 
@@ -37,15 +48,33 @@ class PostgresEnvironment {
 	private final String database;
 
 	PostgresEnvironment(Map<String, String> env) {
-		this.username = env.getOrDefault("POSTGRES_USER", "postgres");
+		this.username = extract(env, USERNAME_KEYS, DEFAULT_USERNAME);
 		this.password = extractPassword(env);
-		this.database = env.getOrDefault("POSTGRES_DB", this.username);
+		this.database = extract(env, DATABASE_KEYS, this.username);
+	}
+
+	private String extract(Map<String, String> env, String[] keys, String defaultValue) {
+		for (String key : keys) {
+			if (env.containsKey(key)) {
+				return env.get(key);
+			}
+		}
+		return defaultValue;
 	}
 
 	private String extractPassword(Map<String, String> env) {
-		String password = env.get("POSTGRES_PASSWORD");
-		Assert.state(StringUtils.hasLength(password), "No POSTGRES_PASSWORD defined");
-		return password;
+		if (isUsingTrustHostAuthMethod(env)) {
+			return null;
+		}
+		String password = env.getOrDefault("POSTGRES_PASSWORD", env.get("POSTGRESQL_PASSWORD"));
+		boolean allowEmpty = env.containsKey("ALLOW_EMPTY_PASSWORD");
+		Assert.state(allowEmpty || StringUtils.hasLength(password), "No PostgreSQL password found");
+		return (password != null) ? password : "";
+	}
+
+	private boolean isUsingTrustHostAuthMethod(Map<String, String> env) {
+		String hostAuthMethod = env.get("POSTGRES_HOST_AUTH_METHOD");
+		return "trust".equals(hostAuthMethod);
 	}
 
 	String getUsername() {

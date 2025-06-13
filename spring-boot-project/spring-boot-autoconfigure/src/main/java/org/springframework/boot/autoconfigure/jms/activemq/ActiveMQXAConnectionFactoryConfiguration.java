@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ import org.apache.activemq.ActiveMQXAConnectionFactory;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.jms.XAConnectionFactoryWrapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -49,21 +49,23 @@ class ActiveMQXAConnectionFactoryConfiguration {
 	ConnectionFactory jmsConnectionFactory(ActiveMQProperties properties,
 			ObjectProvider<ActiveMQConnectionFactoryCustomizer> factoryCustomizers, XAConnectionFactoryWrapper wrapper,
 			ActiveMQConnectionDetails connectionDetails) throws Exception {
-		ActiveMQXAConnectionFactory connectionFactory = new ActiveMQConnectionFactoryFactory(properties,
-				factoryCustomizers.orderedStream().toList(), connectionDetails)
-			.createConnectionFactory(ActiveMQXAConnectionFactory.class);
+		ActiveMQXAConnectionFactory connectionFactory = new ActiveMQXAConnectionFactory(connectionDetails.getUser(),
+				connectionDetails.getPassword(), connectionDetails.getBrokerUrl());
+		new ActiveMQConnectionFactoryConfigurer(properties, factoryCustomizers.orderedStream().toList())
+			.configure(connectionFactory);
 		return wrapper.wrapConnectionFactory(connectionFactory);
 	}
 
 	@Bean
-	@ConditionalOnProperty(prefix = "spring.activemq.pool", name = "enabled", havingValue = "false",
-			matchIfMissing = true)
+	@ConditionalOnBooleanProperty(name = "spring.activemq.pool.enabled", havingValue = false, matchIfMissing = true)
 	ActiveMQConnectionFactory nonXaJmsConnectionFactory(ActiveMQProperties properties,
 			ObjectProvider<ActiveMQConnectionFactoryCustomizer> factoryCustomizers,
 			ActiveMQConnectionDetails connectionDetails) {
-		return new ActiveMQConnectionFactoryFactory(properties, factoryCustomizers.orderedStream().toList(),
-				connectionDetails)
-			.createConnectionFactory(ActiveMQConnectionFactory.class);
+		ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory(connectionDetails.getUser(),
+				connectionDetails.getPassword(), connectionDetails.getBrokerUrl());
+		new ActiveMQConnectionFactoryConfigurer(properties, factoryCustomizers.orderedStream().toList())
+			.configure(connectionFactory);
+		return connectionFactory;
 	}
 
 }

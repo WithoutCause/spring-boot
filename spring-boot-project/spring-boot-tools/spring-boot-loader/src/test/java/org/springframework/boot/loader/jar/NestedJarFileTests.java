@@ -240,7 +240,7 @@ class NestedJarFileTests {
 	void getCommentWhenClosedThrowsException() throws IOException {
 		try (NestedJarFile jar = new NestedJarFile(this.file)) {
 			jar.close();
-			assertThatIllegalStateException().isThrownBy(() -> jar.getComment()).withMessage("Zip file closed");
+			assertThatIllegalStateException().isThrownBy(jar::getComment).withMessage("Zip file closed");
 		}
 	}
 
@@ -269,7 +269,7 @@ class NestedJarFileTests {
 	void sizeWhenClosedThrowsException() throws Exception {
 		try (NestedJarFile jar = new NestedJarFile(this.file)) {
 			jar.close();
-			assertThatIllegalStateException().isThrownBy(() -> jar.size()).withMessage("Zip file closed");
+			assertThatIllegalStateException().isThrownBy(jar::size).withMessage("Zip file closed");
 		}
 	}
 
@@ -303,7 +303,7 @@ class NestedJarFileTests {
 		Cleanable cleanable = mock(Cleanable.class);
 		given(cleaner.register(any(), action.capture())).willReturn(cleanable);
 		try (NestedJarFile jar = new NestedJarFile(this.file, null, null, false, cleaner)) {
-			Object channel = Extractors.byName("resources.zipContent.data.channel").apply(jar);
+			Object channel = Extractors.byName("resources.zipContent.data.fileAccess").apply(jar);
 			assertThat(channel).extracting("referenceCount").isEqualTo(1);
 			action.getValue().run();
 			assertThat(channel).extracting("referenceCount").isEqualTo(0);
@@ -410,6 +410,25 @@ class NestedJarFileTests {
 		List<String> jdk = collectComments(new JarFile(file));
 		List<String> nested = collectComments(new NestedJarFile(file, "BOOT-INF/classes/"));
 		assertThat(nested).isEqualTo(jdk);
+	}
+
+	@Test
+	void mismatchedStreamEntriesThrowsException() throws IOException {
+		File mismatchJar = new File("src/test/resources/jars/mismatch.jar");
+		IllegalStateException failure = null;
+		try (NestedJarFile innerJar = new NestedJarFile(mismatchJar, "inner.jar")) {
+			Enumeration<JarEntry> entries = innerJar.entries();
+			while (entries.hasMoreElements()) {
+				try {
+					entries.nextElement().getCodeSigners();
+				}
+				catch (IllegalStateException ex) {
+					failure = (failure != null) ? failure : ex;
+				}
+			}
+		}
+		assertThat(failure)
+			.hasMessage("Content mismatch when reading security info for entry 'content' (content check)");
 	}
 
 	private List<String> collectComments(JarFile jarFile) throws IOException {
